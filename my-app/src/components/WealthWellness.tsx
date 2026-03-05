@@ -279,6 +279,219 @@ function DonutChart({ assets, size=130 }: any) {
   );
 }
 
+// ─── Asset Holdings data ──────────────────────────────────────────────────────
+const ASSET_HOLDINGS: any = {
+  Stocks: [
+    { ticker:"AAPL", name:"Apple Inc.",       value:45000, change:2.3  },
+    { ticker:"TSLA", name:"Tesla",            value:38000, change:-1.2 },
+    { ticker:"VOO",  name:"Vanguard S&P 500", value:75000, change:1.8  },
+    { ticker:"MSFT", name:"Microsoft",        value:27000, change:3.1  },
+  ],
+  "Real Estate": [
+    { ticker:"REITs", name:"REIT Portfolio",  value:80000, change:0.4  },
+    { ticker:"PROP",  name:"Direct Property", value:70000, change:0.1  },
+  ],
+  Savings: [
+    { ticker:"HYSA", name:"High-Yield Savings", value:50000, change:0.05 },
+    { ticker:"CD",   name:"Certificates of Deposit", value:25000, change:0.03 },
+  ],
+  Crypto: [
+    { ticker:"BTC",  name:"Bitcoin",    value:28000, change:-3.1 },
+    { ticker:"ETH",  name:"Ethereum",   value:17000, change:-1.8 },
+  ],
+  Bonds: [
+    { ticker:"GOVT", name:"US Treasury", value:20000, change:0.1  },
+    { ticker:"CORP", name:"Corp Bonds",  value:12500, change:0.05 },
+  ],
+};
+
+const ASSET_HISTORY: any = {
+  Stocks:       [{m:"Oct",v:160000},{m:"Nov",v:168000},{m:"Dec",v:172000},{m:"Jan",v:169000},{m:"Feb",v:178000},{m:"Mar",v:185000}],
+  "Real Estate":[{m:"Oct",v:138000},{m:"Nov",v:141000},{m:"Dec",v:144000},{m:"Jan",v:145000},{m:"Feb",v:148000},{m:"Mar",v:150000}],
+  Savings:      [{m:"Oct",v:70000},{m:"Nov",v:71000},{m:"Dec",v:72000},{m:"Jan",v:73000},{m:"Feb",v:74000},{m:"Mar",v:75000}],
+  Crypto:       [{m:"Oct",v:65000},{m:"Nov",v:58000},{m:"Dec",v:52000},{m:"Jan",v:49000},{m:"Feb",v:47000},{m:"Mar",v:45000}],
+  Bonds:        [{m:"Oct",v:30000},{m:"Nov",v:30500},{m:"Dec",v:31000},{m:"Jan",v:31500},{m:"Feb",v:32000},{m:"Mar",v:32500}],
+};
+
+const ASSET_META: any = {
+  Stocks:       { subtitle:"Equity Investments",    healthLabel:"Healthy",   diversification:85, liquidity:95, riskLevel:72 },
+  "Real Estate":{ subtitle:"Property & REITs",      healthLabel:"Stable",    diversification:60, liquidity:30, riskLevel:45 },
+  Savings:      { subtitle:"Cash & Deposits",       healthLabel:"Very Safe", diversification:40, liquidity:100,riskLevel:5  },
+  Crypto:       { subtitle:"Digital Assets",        healthLabel:"Volatile",  diversification:20, liquidity:90, riskLevel:95 },
+  Bonds:        { subtitle:"Fixed Income",          healthLabel:"Stable",    diversification:70, liquidity:60, riskLevel:25 },
+};
+
+function AssetDetailSheet({ asset, onClose }: any) {
+  const meta = ASSET_META[asset.name] || {};
+  const holdings = ASSET_HOLDINGS[asset.name] || [];
+  const history = ASSET_HISTORY[asset.name] || [];
+  const healthColor = asset.mood==="happy"?"#10b981":asset.mood==="worried"?"#ef4444":"#f59e0b";
+  const healthEmoji = asset.mood==="happy"?"😊":asset.mood==="worried"?"😟":"😐";
+
+  // Mini line chart for history
+  const W=300, H=120;
+  const vals = history.map((d:any)=>d.v);
+  const min=Math.min(...vals), max=Math.max(...vals);
+  const pts = history.map((d:any,i:number)=>({
+    x: 8+(i/(history.length-1))*(W-16),
+    y: H-16-((d.v-min)/(max-min||1))*(H-32), ...d
+  }));
+  const linePath = pts.map((p:any,i:number)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${pts[pts.length-1].x},${H} L${pts[0].x},${H} Z`;
+
+  return (
+    <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.5)",justifyContent:"flex-end"}}>
+      <TouchableOpacity style={{flex:1}} activeOpacity={1} onPress={onClose}/>
+      <View style={{backgroundColor:C.bg,borderTopLeftRadius:28,borderTopRightRadius:28,maxHeight:"92%",overflow:"hidden"}}>
+        {/* Colored header */}
+        <View style={{backgroundColor:asset.color,paddingTop:28,paddingBottom:32,paddingHorizontal:24,alignItems:"center",position:"relative"}}>
+          {/* Close button */}
+          <TouchableOpacity onPress={onClose} style={{position:"absolute",top:16,right:16,width:32,height:32,borderRadius:16,backgroundColor:"rgba(255,255,255,0.2)",alignItems:"center",justifyContent:"center"}}>
+            <Text style={{color:"white",fontSize:18,fontWeight:"700"}}>×</Text>
+          </TouchableOpacity>
+          {/* Asset icon circle */}
+          <View style={{width:72,height:72,borderRadius:36,backgroundColor:"rgba(255,255,255,0.25)",alignItems:"center",justifyContent:"center",marginBottom:12}}>
+            <Text style={{fontSize:36}}>{asset.emoji}</Text>
+          </View>
+          <Text style={{fontSize:26,fontWeight:"900",color:"white"}}>{asset.name}</Text>
+          <Text style={{fontSize:14,color:"rgba(255,255,255,0.8)",marginTop:2}}>{meta.subtitle}</Text>
+          <View style={{marginTop:10,backgroundColor:"rgba(255,255,255,0.2)",borderRadius:99,paddingVertical:4,paddingHorizontal:14,flexDirection:"row",alignItems:"center",gap:6}}>
+            <Text style={{fontSize:14}}>{healthEmoji}</Text>
+            <Text style={{color:"white",fontWeight:"700",fontSize:13}}>{meta.healthLabel}</Text>
+          </View>
+        </View>
+
+        <ScrollView contentContainerStyle={{padding:20,paddingBottom:40}} showsVerticalScrollIndicator={false}>
+
+          {/* Total Value card */}
+          <View style={[styles.card,{marginBottom:12}]}>
+            <Text style={{fontSize:13,color:C.muted,marginBottom:4}}>Total Value</Text>
+            <Text style={{fontSize:34,fontWeight:"900",color:C.text}}>${asset.value.toLocaleString()}</Text>
+            <View style={{flexDirection:"row",alignItems:"center",gap:6,marginTop:6}}>
+              <Text style={{fontSize:14,color:pctC(asset.month),fontWeight:"700"}}>
+                {asset.month>=0?"↗":"↘"} {asset.month>=0?"+":""}{asset.month}% this month
+              </Text>
+            </View>
+          </View>
+
+          {/* About */}
+          <View style={[styles.card,{marginBottom:12}]}>
+            <View style={{flexDirection:"row",alignItems:"center",gap:8,marginBottom:8}}>
+              <Text style={{fontSize:16}}>ℹ️</Text>
+              <Text style={{fontWeight:"700",fontSize:15,color:C.text}}>About This Asset</Text>
+            </View>
+            <Text style={{fontSize:13,color:C.muted,lineHeight:20}}>
+              {asset.name==="Stocks"?"Your stock portfolio includes individual stocks and index funds. Stocks offer high growth potential but come with higher volatility."
+              :asset.name==="Real Estate"?"Real estate provides stable returns through rental income and property appreciation with lower correlation to markets."
+              :asset.name==="Savings"?"High-yield savings and CDs provide safe, liquid returns. Ideal for emergency funds and short-term goals."
+              :asset.name==="Crypto"?"Cryptocurrency assets offer high return potential but carry significant volatility and risk. Monitor closely."
+              :"Bonds provide fixed income with lower risk. They help stabilize your portfolio during market downturns."}
+            </Text>
+          </View>
+
+          {/* Performance grid */}
+          <View style={[styles.card,{marginBottom:12}]}>
+            <Text style={{fontWeight:"700",fontSize:15,color:C.text,marginBottom:14}}>Performance</Text>
+            <View style={{flexDirection:"row",flexWrap:"wrap",gap:10}}>
+              {[["24H",asset.day],["7D",asset.week],["1M",asset.month],["1Y",asset.year]].map(([label,val]:any)=>(
+                <View key={label} style={{width:"47%",backgroundColor:"rgba(0,0,0,0.03)",borderRadius:12,padding:12}}>
+                  <Text style={{fontSize:12,color:C.muted,marginBottom:4}}>{label}</Text>
+                  <Text style={{fontSize:20,fontWeight:"800",color:pctC(val)}}>{val>=0?"+":""}{val}%</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* 6-Month History chart */}
+          {history.length>0&&(
+            <View style={[styles.card,{marginBottom:12}]}>
+              <Text style={{fontWeight:"700",fontSize:15,color:C.text,marginBottom:14}}>6-Month History</Text>
+              <Svg width="100%" viewBox={`0 0 ${W} ${H+12}`} style={{overflow:"visible"}}>
+                <Defs>
+                  <LinearGradient id={`area_${asset.name.replace(/\s/g,"")}`} x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0%" stopColor={asset.color} stopOpacity="0.25"/>
+                    <Stop offset="100%" stopColor={asset.color} stopOpacity="0.02"/>
+                  </LinearGradient>
+                </Defs>
+                <Path d={areaPath} fill={`url(#area_${asset.name.replace(/\s/g,"")})`}/>
+                <Path d={linePath} fill="none" stroke={asset.color} strokeWidth="2.5" strokeLinecap="round"/>
+                {pts.map((p:any,i:number)=>(
+                  <SvgText key={i} x={p.x} y={H+10} textAnchor="middle" fill={C.muted} fontSize="9">{p.m}</SvgText>
+                ))}
+                {/* Y axis labels */}
+                {[min,max].map((v,i)=>(
+                  <SvgText key={i} x={W-4} y={i===0?H-4:14} textAnchor="end" fill={C.muted} fontSize="8">{fmt(v)}</SvgText>
+                ))}
+                <Circle cx={pts[pts.length-1].x} cy={pts[pts.length-1].y} r="4" fill={asset.color} stroke="white" strokeWidth="2"/>
+              </Svg>
+            </View>
+          )}
+
+          {/* Asset Health Metrics */}
+          <View style={[styles.card,{marginBottom:12}]}>
+            <Text style={{fontWeight:"700",fontSize:15,color:C.text,marginBottom:16}}>Asset Health Metrics</Text>
+            {[
+              ["Diversification", meta.diversification, C.accent],
+              ["Liquidity",       meta.liquidity,       "#10b981"],
+              ["Risk Level",      meta.riskLevel,       asset.risk>70?"#ef4444":asset.risk>40?"#f59e0b":"#10b981"],
+            ].map(([label,val,color]:any)=>(
+              <View key={label} style={{marginBottom:14}}>
+                <View style={{flexDirection:"row",justifyContent:"space-between",marginBottom:6}}>
+                  <Text style={{fontSize:13,color:C.text}}>{label}</Text>
+                  <Text style={{fontSize:13,color:C.muted,fontWeight:"600"}}>{val}%</Text>
+                </View>
+                <ProgressBar value={val} color={color} height={7}/>
+              </View>
+            ))}
+          </View>
+
+          {/* Portfolio Allocation */}
+          <View style={[styles.card,{marginBottom:12}]}>
+            <View style={{flexDirection:"row",alignItems:"center",gap:8,marginBottom:8}}>
+              <Text style={{fontSize:16}}>%</Text>
+              <Text style={{fontWeight:"700",fontSize:15,color:C.text}}>Portfolio Allocation</Text>
+            </View>
+            <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+              <Text style={{fontSize:13,color:C.muted}}>Percentage of Total Wealth</Text>
+              <Text style={{fontSize:28,fontWeight:"900",color:C.text}}>{asset.pct}%</Text>
+            </View>
+          </View>
+
+          {/* Holdings */}
+          {holdings.length>0&&(
+            <View style={[styles.card,{marginBottom:12}]}>
+              <Text style={{fontWeight:"700",fontSize:15,color:C.text,marginBottom:4}}>Holdings</Text>
+              <Text style={{fontSize:12,color:C.muted,marginBottom:14}}>Individual positions in this asset class</Text>
+              {holdings.map((h:any,i:number)=>(
+                <View key={i} style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center",backgroundColor:"rgba(0,0,0,0.03)",borderRadius:12,padding:12,marginBottom:8}}>
+                  <View>
+                    <Text style={{fontWeight:"700",fontSize:14,color:C.text}}>{h.ticker} — {h.name}</Text>
+                    <Text style={{fontSize:12,color:C.muted}}>${h.value.toLocaleString()}</Text>
+                  </View>
+                  <Text style={{fontSize:15,fontWeight:"700",color:pctC(h.change)}}>{h.change>=0?"+":""}{h.change}%</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Action buttons */}
+          <View style={{flexDirection:"row",gap:10,marginTop:4}}>
+            <TouchableOpacity style={{flex:1,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8,padding:14,backgroundColor:asset.color,borderRadius:14}}>
+              <Text style={{fontSize:16}}>$</Text>
+              <Text style={{color:"white",fontWeight:"700",fontSize:14}}>Add Funds</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{flex:1,flexDirection:"row",alignItems:"center",justifyContent:"center",gap:8,padding:14,backgroundColor:"rgba(0,0,0,0.06)",borderRadius:14}}>
+              <Text style={{fontSize:16}}>📅</Text>
+              <Text style={{color:C.text,fontWeight:"700",fontSize:14}}>Set Goal</Text>
+            </TouchableOpacity>
+          </View>
+
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 function Dashboard({ onNavigate, mode }: any) {
   const [selAsset, setSelAsset] = useState<any>(null);
@@ -389,41 +602,7 @@ function Dashboard({ onNavigate, mode }: any) {
 
       {/* Asset Detail Modal */}
       <Modal visible={!!selAsset} transparent animationType="slide" onRequestClose={()=>setSelAsset(null)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={()=>setSelAsset(null)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalSheet} onPress={()=>{}}>
-            {selAsset&&(
-              <ScrollView>
-                <View style={{flexDirection:"row",alignItems:"center",gap:12,marginBottom:20}}>
-                  <View style={{width:52,height:52,borderRadius:16,backgroundColor:`${selAsset.color}18`,alignItems:"center",justifyContent:"center"}}>
-                    <Text style={{fontSize:28}}>{selAsset.emoji}</Text>
-                  </View>
-                  <View style={{flex:1}}>
-                    <Text style={{fontWeight:"800",fontSize:20,color:C.text}}>{selAsset.name}</Text>
-                    <Text style={{fontSize:13,color:C.muted}}>{selAsset.pct}% of portfolio</Text>
-                  </View>
-                  <View style={{alignItems:"flex-end"}}>
-                    <Text style={{fontWeight:"800",fontSize:20,color:C.text}}>{fmt(selAsset.value)}</Text>
-                    <Text style={{fontSize:12,color:pctC(selAsset.month)}}>{selAsset.month>=0?"+":""}{selAsset.month}% / mo</Text>
-                  </View>
-                </View>
-                {([["Day",selAsset.day],["Week",selAsset.week],["Month",selAsset.month],["Year",selAsset.year]] as any[]).map(([l,v])=>(
-                  <View key={l} style={{flexDirection:"row",justifyContent:"space-between",paddingVertical:10,borderBottomColor:C.cardBorder,borderBottomWidth:1}}>
-                    <Text style={{color:C.muted,fontSize:14}}>{l} return</Text>
-                    <Text style={{color:pctC(v),fontSize:14,fontWeight:"700"}}>{v>=0?"+":""}{v}%</Text>
-                  </View>
-                ))}
-                <View style={{marginTop:16}}>
-                  <Text style={{fontSize:13,color:C.muted,marginBottom:6}}>Risk Level</Text>
-                  <ProgressBar value={selAsset.risk} color={selAsset.risk>70?"#ef4444":selAsset.risk>40?"#f59e0b":"#10b981"} height={8}/>
-                  <Text style={{fontSize:11,color:C.muted,marginTop:4}}>{selAsset.risk}% risk score</Text>
-                </View>
-                <TouchableOpacity onPress={()=>setSelAsset(null)} style={[styles.primaryButton,{marginTop:20}]}>
-                  <Text style={styles.primaryButtonText}>Close</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
+        {selAsset&&<AssetDetailSheet asset={selAsset} onClose={()=>setSelAsset(null)}/>}
       </Modal>
     </ScrollView>
   );

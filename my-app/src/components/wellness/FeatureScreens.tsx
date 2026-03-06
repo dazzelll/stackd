@@ -445,13 +445,17 @@ export function ManifestationBoard({ onBack }: any) {
         `${g.emoji} ${g.title}: $${g.current.toLocaleString()} of $${g.target.toLocaleString()} by ${g.deadline}`
       ).join(", ");
   
-      const BACKEND_URL = "http://127.0.0.1:8000/api/manifestation/prophecy";
+      const BACKEND_URL = "http://10.0.2.2:8000/api/manifestation/prophecy";
   
       const res = await fetch(BACKEND_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Accept": "application/json", 
+          "Content-Type": "application/json" 
+        },
         body: JSON.stringify({
-          riskLevel: riskLevel, // Sending the number to the backend
+          // THE FIX: Translate the number into the string the backend expects!
+          mode: riskLevel > 5 ? "growth" : "frugal", 
           goalsSummary: goalsSummary
         })
       });

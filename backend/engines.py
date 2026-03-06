@@ -1,10 +1,14 @@
 import math
 import os
-from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
+import google.generativeai as genai
+
+# Load environment variables
 load_dotenv()
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Configure Gemini
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # --- SCORING ENGINE ---
 def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0):
@@ -54,17 +58,43 @@ def calculate_wealth_age(total_wealth, real_age, health_score):
 # --- AI SERVICE ---
 async def generate_prophecy_text(data):
     try:
+        # Use flash for high-speed hackathon responses
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
         prompt = f"""You are the financial oracle of a Gen Z wealth app called Wealth Wellness Hub.
         Write a SHORT prophecy (2-3 sentences MAX) about this user's financial future.
         Data: Projected wealth: ${data['projectedWealth']}, Freedom year: {data['freedomYear']}, Health score: {data['healthScore']}/100.
         Rules: Sound like a mystical oracle meets a Gen Z bestie. Max 3 sentences. No bullet points."""
         
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=150, temperature=0.8
-        )
-        return response.choices[0].message.content
+        # Use the async generation method to prevent blocking the backend
+        response = await model.generate_content_async(prompt)
+        return response.text.strip()
+        
     except Exception as e:
-        print("OpenAI Error:", e)
+        print("Gemini API Error:", e)
         return "The algorithm has spoken ✨ You are on your way to main character energy."
+    
+async def generate_villain_roast(assets_data):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = f"""
+        You are a savage, Gen-Z financial advisor AI. 
+        The user just ruined their portfolio. 
+        Here is their current data: {assets_data}
+        
+        Write a 1-sentence warning telling them their savings are too low and their crypto is too high. 
+        Rules:
+        - Keep it strictly under 15 words.
+        - Use lowercase letters only.
+        - Use Gen-Z slang (e.g., bestie, cooked, wilding, caught in 4k).
+        - Do not use hashtags.
+        """
+        
+        # Using async generation to keep the server fast
+        response = await model.generate_content_async(prompt)
+        return response.text.strip()
+        
+    except Exception as e:
+        print("Gemini API Error:", e)
+        return "your savings are depleted and crypto is wilding bestie. we need to fix this."

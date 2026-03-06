@@ -8,9 +8,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import stripe
 
+import google.generativeai as genai
+
 from database import engine, get_db, Base
 import models
-from engines import calculate_health_score, calculate_wealth_age, generate_prophecy_text
+from engines import calculate_health_score, calculate_wealth_age, generate_prophecy_text, generate_villain_roast
 
 # 1. Create DB Tables
 models.Base.metadata.create_all(bind=engine)
@@ -32,8 +34,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
-# 3. Stripe Configuration
+# Stripe Configuration
 stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+# Gemini Configuration
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # State variable to track how much money we've "topped up" via Stripe
 HACKATHON_TOP_UP_TOTAL = 0
@@ -164,15 +168,17 @@ async def simulator_run(data: dict = Body(...)):
 async def get_villain_data():
     global HACKATHON_SABOTAGE_MODE
     
-    # 1. If data is healthy (sabotage is off), return NOTHING. App stays quiet.
+    # 1. If healthy, stay quiet!
     if not HACKATHON_SABOTAGE_MODE:
         return {"alerts": []}
         
-    # 2. If data is sabotaged, trigger the alert!
+    # 2. If sabotaged, ask the engine to generate the roast based on the current assets
+    dynamic_message = await generate_villain_roast(MOCK_ASSETS)
+
     return {
         "alerts": [{
             "id": "crypto_overweight", 
-            "message": "your savings are depleted and crypto is wilding bestie. we need to fix this.", 
+            "message": dynamic_message, 
             "severity": "high", 
             "emoji": "🚨"
         }],

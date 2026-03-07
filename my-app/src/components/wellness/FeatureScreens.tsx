@@ -584,7 +584,7 @@ export function ManifestationBoard({ onBack }: any) {
           style={{ backgroundColor:"#7c3aed", borderRadius:12, padding:13, alignItems:"center" }}
         >
           <Text style={{ color:"white", fontWeight:"700", fontSize:14 }}>
-            {loadingProphecy ? "✨ The oracle is speaking..." : "🔮 Consult the Oracle"}
+            {loadingProphecy ? "✨ The oracle is speaking..." : "Consult the Oracle"}
           </Text>
         </TouchableOpacity>
       </Card>

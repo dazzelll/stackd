@@ -22,6 +22,7 @@ export function Dashboard({ onNavigate, mode }: any) {
   const [assets, setAssets] = useState(FALLBACK_ASSETS);
   const [totalWealth, setTotalWealth] = useState(487500);
   const [health, setHealth] = useState<any>(null);
+  const [trajectory, setTrajectory] = useState(WEALTH_HISTORY);
 
   const [isConnectingBank, setIsConnectingBank] = useState(false);
   const [isConnectingStripe, setIsConnectingStripe] = useState(false);
@@ -46,6 +47,9 @@ export function Dashboard({ onNavigate, mode }: any) {
         setAssets(data.assets);
         setTotalWealth(data.total);
         if (data.health) setHealth(data.health);
+        if (data.history && Array.isArray(data.history) && data.history.length > 0) {
+          setTrajectory(data.history);
+        }
       })
       .catch((err) => console.error("Portfolio fetch failed:", err));
   };
@@ -413,7 +417,7 @@ export function Dashboard({ onNavigate, mode }: any) {
         <Text style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
           Portfolio growth over time
         </Text>
-        <LineChart data={WEALTH_HISTORY} />
+        <LineChart data={trajectory} />
       </Card>
 
       {/* Mini Stats */}

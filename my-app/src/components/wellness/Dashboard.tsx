@@ -29,12 +29,33 @@ export function Dashboard({ onNavigate, mode }: any) {
 
   const [villainAlert, setVillainAlert] = useState<any>(null);
 
+  // 6‑month trajectory (past + projected) from backend ensemble engine
+  const [trajectory, setTrajectory] = useState<any[]>(WEALTH_HISTORY);
+
   const assetIcons: Record<string, any> = {
     "Stocks":               TrendingUp,
     "Real Estate & Others": Home,
     "Savings":              PiggyBank,
     "Crypto":               Bitcoin,
     "Bonds":                ScrollText,
+  };
+
+  const fetchTrajectory = () => {
+    fetch(`${API_BASE_URL}/portfolio/trajectory`)
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("📈 Trajectory data:", data);
+        const pts = data?.trajectory?.points;
+        if (Array.isArray(pts) && pts.length > 0) {
+          setTrajectory(pts);
+        } else {
+          setTrajectory(WEALTH_HISTORY);
+        }
+      })
+      .catch((err) => {
+        console.error("Trajectory fetch failed:", err);
+        setTrajectory(WEALTH_HISTORY);
+      });
   };
 
   // Use sandbox (Alpaca + supplemental) so numbers reflect real/live data, not static mock
@@ -84,6 +105,7 @@ export function Dashboard({ onNavigate, mode }: any) {
   // Run once on mount
   useEffect(() => {
     fetchPortfolio();
+    fetchTrajectory();
   }, []);
 
   // ACT 1: Connect Bank
@@ -94,6 +116,7 @@ export function Dashboard({ onNavigate, mode }: any) {
       setIsConnectingBank(false);
       fetchPortfolio();
       fetchVillainData(5);
+      fetchTrajectory();
     }, 2000);
   };
 
@@ -116,6 +139,7 @@ export function Dashboard({ onNavigate, mode }: any) {
           });
           fetchPortfolio();
           setVillainAlert(null); // Clear warning — they fixed it!
+          fetchTrajectory();
           setIsConnectingStripe(false);
         }, 5000);
       } else {
@@ -413,7 +437,9 @@ export function Dashboard({ onNavigate, mode }: any) {
         <Text style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
           Portfolio growth over time
         </Text>
-        <LineChart data={WEALTH_HISTORY} />
+        
+        {/* Pass assets here so the scrubber can calculate the breakdown! */}
+        <LineChart data={trajectory} assets={assets} />
       </Card>
 
       {/* Mini Stats */}

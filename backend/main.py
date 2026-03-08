@@ -21,7 +21,15 @@ import google.generativeai as genai
 from database import engine, get_db, Base
 import models
 from pydantic import BaseModel
-from engines import calculate_health_score, calculate_wealth_age, generate_prophecy_text, generate_gemini_prophecy, extract_simulation_parameters, generate_villain_roast
+from engines import (
+    calculate_health_score,
+    calculate_wealth_age,
+    generate_prophecy_text,
+    generate_gemini_prophecy,
+    extract_simulation_parameters,
+    generate_villain_roast,
+    build_portfolio_trajectory,
+)
 
 # 1. Create DB Tables
 models.Base.metadata.create_all(bind=engine)
@@ -771,4 +779,21 @@ async def get_sandbox_portfolio():
         "wealth_age": wealth_age,
         "villain_event_active": False,
         "history": [],
+    }
+
+
+@app.get("/api/portfolio/trajectory")
+async def get_portfolio_trajectory():
+    """
+    Ensemble, category-aware 6-month trajectory.
+    - Uses the sandbox portfolio (Alpaca + supplemental, or fallback mock)
+    - Applies asset-class-specific, macro-aware, AI-tilted returns
+    Returns past + future points for the dashboard line chart.
+    """
+    # Reuse sandbox logic so sabotage / top-ups and health score stay consistent
+    base = await get_sandbox_portfolio()
+    trajectory = await build_portfolio_trajectory(base)
+    return {
+        "base": base,
+        "trajectory": trajectory,
     }

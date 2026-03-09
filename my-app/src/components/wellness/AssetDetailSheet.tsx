@@ -103,8 +103,10 @@ function HistoryChart({ data, color }: { data: { m: string; v: number }[]; color
   // Y-axis labels (3 ticks)
   const yTicks = [min, min + range / 2, max];
 
+  const viewBoxStr = `0 0 ${W} ${H}`;
+
   return (
-    <Svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+    <Svg width="100%" height={H} viewBox={viewBoxStr} style={{ overflow: "visible" }}>
       <Defs>
         <LinearGradient id={`hg_${color.replace("#", "")}`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0%" stopColor={color} stopOpacity="0.18" />

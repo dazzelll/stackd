@@ -13,7 +13,7 @@ import { Card, Badge, ProgressBar, styles, CryptoLiveTicker, StockLiveTicker } f
 import { LineChart, DonutChart } from "./Charts";
 import { BlobEcosystem } from "./BlobEcosystem";
 import { AssetDetailSheet } from "./AssetDetailSheet";
-import { Gift, Zap, Bitcoin, PiggyBank, Home, ChartLine, ScrollText, TrendingUp  } from "lucide-react-native";
+import { Gift, Zap, Bitcoin, PiggyBank, Home, ChartLine, ScrollText, TrendingUp, BanknoteArrowDown  } from "lucide-react-native";
 import { API_BASE_URL } from "../../lib/api";
 
 export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
@@ -309,14 +309,23 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
       <Text style={{ fontSize:12, color:C.muted }}>Tap a blob to explore</Text>
     </View>
     <View style={{ alignItems:"flex-end" }}>
+      <Text style={{ fontSize:12, color:C.muted, fontWeight:"700", marginBottom: -2 }}>Net Worth</Text>
       <Text style={{ fontSize:28, fontWeight:"900", color:C.text, letterSpacing:-1 }}>
         {fmt(totalWealth)}
       </Text>
-      <Text style={{ fontSize:12, color:"#10b981", fontWeight:"600" }}>↑ +12.5% this month</Text>
+      
+      {/* Show Gross Assets if they have debt */}
+      {totalDebt > 0 && (
+        <Text style={{ fontSize:12, color:C.muted, fontWeight:"600", marginTop: 2 }}>
+          Gross Assets: {fmt(grossWealth)}
+        </Text>
+      )}
+      
+      <Text style={{ fontSize:12, color:"#10b981", fontWeight:"600", marginTop: 4 }}>↑ +12.5% this month</Text>
       {isConnected && (
-        <View style={{ flexDirection:"row", alignItems:"center", gap:4, marginTop:2 }}>
+        <View style={{ flexDirection:"row", alignItems:"center", gap:4, marginTop:4 }}>
           <View style={{ width:6, height:6, borderRadius:3, backgroundColor:"#10b981" }}/>
-          <Text style={{ fontSize:10, color:"#10b981" }}>Live</Text>
+          <Text style={{ fontSize:10, color:"#10b981", fontWeight: "600" }}>Live</Text>
         </View>
       )}
     </View>
@@ -324,62 +333,57 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
 
   {/* Blob Ecosystem */}
   <BlobEcosystem assets={assets} onBlobTap={setSelAsset} />
-  {totalDebt > 0 && (
-  <View style={{ marginTop: 14, marginBottom: 2 }}>
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#ef4444" }} />
-        <Text style={{ fontSize: 13, fontWeight: "700", color: "#ef4444" }}>Debt</Text>
-      </View>
-      <Text style={{ fontSize: 13, fontWeight: "800", color: "#ef4444" }}>−{fmt(totalDebt)}</Text>
-    </View>
-    <View style={{ height: 7, borderRadius: 4, backgroundColor: "rgba(239,68,68,0.12)", overflow: "hidden" }}>
-      <View style={{
-        height: 7,
-        borderRadius: 4,
-        backgroundColor: "#ef4444",
-        width: `${Math.min(100, (totalDebt / (grossWealth || 1)) * 100)}%`,
-      }} />
-    </View>
-    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 5 }}>
-      <Text style={{ fontSize: 10, color: "#ef4444" }}>
-        {Math.round((totalDebt / (grossWealth || 1)) * 100)}% of gross wealth
-      </Text>
-      <Text style={{ fontSize: 10, color: "#10b981", fontWeight: "600" }}>
-        Net: {fmt(totalWealth)}
-      </Text>
-    </View>
-  </View>
-)}
 
-{/* Asset list */}
-      <View style={{ marginTop: 16 }}>
-{assets.map((a: any, i: number) => {
-  const Icon = assetIcons[a.name] ?? TrendingUp;
-  return (
-    <TouchableOpacity
-      key={a.name}
-      onPress={() => setSelAsset(a)}
-      activeOpacity={0.75}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        paddingVertical: 10,
-        borderTopWidth: i === 0 ? 0 : 1,
-        borderTopColor: "rgba(0,0,0,0.05)",
-        gap: 10,
-      }}
-    >
-      {/* Color dot + lucide icon + name */}
-      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: a.color }} />
-      <Icon size={16} color={a.color} />
-      <Text style={{ fontSize: 13, fontWeight: "700", color: C.text, flex: 1 }}>{a.name}</Text>
-      <Text style={{ fontSize: 14, fontWeight: "800", color: C.text }}>{fmt(a.value)}</Text>
-    </TouchableOpacity>
-  );
-})}
-</View>
+  {/* Asset list */}
+  <View style={{ marginTop: 16 }}>
+    {assets.map((a: any, i: number) => {
+      const Icon = assetIcons[a.name] ?? TrendingUp;
+      return (
+        <TouchableOpacity
+          key={a.name}
+          onPress={() => setSelAsset(a)}
+          activeOpacity={0.75}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 10,
+            borderTopWidth: i === 0 ? 0 : 1,
+            borderTopColor: "rgba(0,0,0,0.05)",
+            gap: 10,
+          }}
+        >
+          {/* Color dot + lucide icon + name */}
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: a.color }} />
+          <Icon size={16} color={a.color} />
+          <Text style={{ fontSize: 13, fontWeight: "700", color: C.text, flex: 1 }}>{a.name}</Text>
+          <Text style={{ fontSize: 14, fontWeight: "800", color: C.text }}>{fmt(a.value)}</Text>
+        </TouchableOpacity>
+      );
+    })}
+
+{/* Debt appended at the bottom of the list */}
+{totalDebt > 0 && (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingVertical: 10,
+          borderTopWidth: 1, 
+          borderTopColor: "rgba(0,0,0,0.05)",
+          gap: 10,
+        }}
+      >
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: "#ef4444" }} />
+        
+        <BanknoteArrowDown size={16} color="#ef4444" />
+        
+        <Text style={{ fontSize: 13, fontWeight: "700", color: "#ef4444", flex: 1 }}>Total Debt</Text>
+        <Text style={{ fontSize: 14, fontWeight: "800", color: "#ef4444" }}>−{fmt(totalDebt)}</Text>
+      </View>
+    )}
+  </View>
 </Card>
+
       <CryptoLiveTicker/>
       <StockLiveTicker/>
 

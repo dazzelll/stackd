@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Path, Circle, Text as SvgText, Defs, LinearGradient, Stop, Line } from "react-native-svg";
-import { C, fmt } from './constants'; // Make sure fmt is exported from constants or use inline formatting
+import { C, fmt } from './constants'; 
 
 export function LineChart({ data, assets = [], color = C.accent }: any) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-  const W = 320, H = 140; // Increased height slightly to accommodate the beautiful curve
+  const W = 320, H = 140; 
   if (!data || data.length === 0) {
     return null;
   }
@@ -35,18 +35,21 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
       .map((p: any, i: number) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
       .join(" ");
 
-  const pastPts = hasPrediction ? pts.slice(0, firstFutureIdx + 1) : pts;
-  const futurePts = hasPrediction ? pts.slice(firstFutureIdx) : [];
+  // Slice up to 'NOW' (March) for the solid line
+  const pastPts = hasPrediction ? pts.slice(0, firstFutureIdx) : pts;
+    
+  // Start the dashed line from 'NOW' (March) so they connect perfectly
+  const futurePts = hasPrediction ? pts.slice(firstFutureIdx - 1) : [];
 
   const pastPath = buildPath(pastPts);
   const futurePath = futurePts.length > 1 ? buildPath(futurePts) : "";
 
-  const boundaryX = hasPrediction ? pts[firstFutureIdx].x : null;
+  // Point the red NOW indicator at the last actual historical month (March)
+  const boundaryX = hasPrediction ? pts[firstFutureIdx - 1].x : null;
 
   // --- Scrubber Logic ---
   const handleTouch = (evt: any) => {
     const locX = evt.nativeEvent.locationX;
-    // Find the closest data point to the user's finger
     let closestIdx = 0;
     let minDist = Infinity;
     pts.forEach((p: any, i: number) => {
@@ -61,14 +64,17 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
 
   const activePoint = activeIndex !== null ? pts[activeIndex] : null;
 
+  // FIX 2: Extract ViewBox string for strict native parsing
+  const viewBoxStr = `0 0 ${W} ${H}`;
+
   return (
-    <View 
-      style={{ position: 'relative', marginTop: 10 }}
+<View 
+      style={{ position: 'relative', marginTop: 10, height: H + 30 }}
       onTouchStart={handleTouch}
       onTouchMove={handleTouch}
       onTouchEnd={() => setActiveIndex(null)}
     >
-      <Svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+      <Svg width="100%" height={H} viewBox={viewBoxStr} style={{ overflow: "visible" }}>
         <Defs>
           <LinearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0%" stopColor={color} stopOpacity="0.3" />
@@ -76,10 +82,8 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
           </LinearGradient>
         </Defs>
 
-        {/* Area under curve */}
         <Path d={area} fill="url(#lg)" />
 
-        {/* Past trajectory */}
         <Path
           d={pastPath}
           fill="none"
@@ -89,7 +93,6 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
           strokeLinejoin="round"
         />
 
-        {/* Future / projected trajectory (dashed) */}
         {hasPrediction && futurePath && (
           <Path
             d={futurePath}
@@ -103,30 +106,28 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
           />
         )}
 
-        {/* Vertical line indicating "NOW" */}
         {hasPrediction && boundaryX !== null && (
           <>
             <Path
               d={`M${boundaryX},5 L${boundaryX},${H - 18}`}
-              stroke="#ef4444" // A sharp red to make the NOW line pop
+              stroke="#ef4444"
               strokeWidth={1.5}
               strokeDasharray="4 4"
             />
+            {/* FIX 3: Removed fontFamily="System" */}
             <SvgText
               x={boundaryX}
               y={0}
               textAnchor="middle"
               fill="#ef4444"
-              fontSize="9"
-              fontFamily="System"
+              fontSize="10"
               fontWeight="800"
             >
-              Today
+              NOW
             </SvgText>
           </>
         )}
 
-        {/* X-Axis Month labels */}
         {pts.map((p: any, i: number) => (
           <SvgText
             key={i}
@@ -135,14 +136,12 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
             textAnchor="middle"
             fill={C.muted}
             fontSize="10"
-            fontFamily="System"
             fontWeight="600"
           >
             {p.m}
           </SvgText>
         ))}
 
-        {/* The active scrubber vertical line and dot */}
         {activePoint && (
           <>
             <Line 
@@ -154,7 +153,6 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
           </>
         )}
 
-        {/* Highlight latest point (only if not scrubbing) */}
         {!activePoint && (
           <Circle
             cx={pts[pts.length - 1].x}
@@ -167,13 +165,11 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
         )}
       </Svg>
 
-      {/* Floating Interactive Tooltip (Rendered outside SVG so it can contain native React Native text/layout) */}
       {activePoint && (
         <View
           style={{
             position: 'absolute',
             top: -30,
-            // Keep tooltip within screen bounds
             left: Math.min(Math.max(10, activePoint.x - 75), W - 160),
             backgroundColor: 'white',
             padding: 12,
@@ -196,7 +192,6 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
             ${activePoint.v.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </Text>
 
-          {/* Dynamic Asset Breakdown Math */}
           {assets && assets.length > 0 && assets.map((a: any, i: number) => {
             if (a.pct === 0) return null;
             const estimatedAssetVal = activePoint.v * (a.pct / 100);
@@ -219,7 +214,6 @@ export function LineChart({ data, assets = [], color = C.accent }: any) {
 }
 
 export function DonutChart({ assets, size = 130 }: any) {
-  // Minor font fixes applied here as well so the $487K perfectly matches the LineChart
   const cx = size / 2, cy = size / 2, r = size * 0.4, inner = size * 0.25;
   let cum = -Math.PI / 2;
   const total = assets.reduce((s: number, a: any) => s + a.value, 0);
@@ -238,10 +232,11 @@ export function DonutChart({ assets, size = 130 }: any) {
     <Svg width={size} height={size}>
       {slices.map((s: any, i: number) => <Path key={i} d={s.d} fill={s.color} opacity="0.9" />)}
       <Circle cx={cx} cy={cy} r={inner - 1} fill="white" />
-      <SvgText x={cx} y={cy - 2} textAnchor="middle" fill={C.text} fontSize={14} fontFamily="System" fontWeight="900">
+      {/* FIX 3: Removed fontFamily="System" */}
+      <SvgText x={cx} y={cy - 2} textAnchor="middle" fill={C.text} fontSize={14} fontWeight="900">
         ${total >= 1000 ? (total / 1000).toFixed(0) + 'K' : total}
       </SvgText>
-      <SvgText x={cx} y={cy + 12} textAnchor="middle" fill={C.muted} fontSize={10} fontFamily="System" fontWeight="600">
+      <SvgText x={cx} y={cy + 12} textAnchor="middle" fill={C.muted} fontSize={10} fontWeight="600">
         Total
       </SvgText>
     </Svg>

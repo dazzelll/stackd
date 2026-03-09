@@ -1969,8 +1969,20 @@ export function Challenges({ onBack }: any) {
 
 
 // ─── VILLAIN ARC ──────────────────────────────────────────────────────────────
+const MOCK_REFS = [
+  { id:"mock1", date:"Feb 15", tx:"Impulse gadget purchase", amount:1200, emotion:"regret", notes:"Bought latest phone when current one works fine. Classic FOMO spending." },
+  { id:"mock2", date:"Jan 28", tx:"Panic sold stocks during dip", amount:5000, emotion:"learning", notes:"Market dropped 10% and I panicked. Sold at a loss. Market recovered in weeks." },
+  { id:"mock3", date:"Jan 5",  tx:"FOMO'd into random crypto", amount:2000, emotion:"learning", notes:"Lost 40% in a week. Research before investing in volatile assets." },
+];
+
 export function VillainArc({ onBack, riskLevel }: any) {
+  const [txName, setTxName]         = useState("");
+  const [txAmount, setTxAmount]     = useState("");
+  const [emotion, setEmotion]       = useState<"regret" | "learning">("learning");
   const [note, setNote]             = useState("");
+  const [errorMsg, setErrorMsg]     = useState("");
+
+  const [refs, setRefs]             = useState<any[]>([]);
   const [alerts, setAlerts]         = useState<any[]>([]);
   const [roast, setRoast]           = useState<string | null>(null);
   const [advice, setAdvice]         = useState<string | null>(null);
@@ -2005,9 +2017,28 @@ export function VillainArc({ onBack, riskLevel }: any) {
     }
   };
 
-  // Load on mount / whenever riskLevel changes
+  // Fetch saved reflections when the screen loads
   useEffect(() => {
     fetchVillainData(riskLevel);
+    
+    // Correct URL (no double /api/)
+    fetch(`${API_BASE_URL}/reflections`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Network response was not ok");
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          // Put database items at the top, mock items at the bottom
+          setRefs([...data, ...MOCK_REFS]); 
+        } else {
+          setRefs(MOCK_REFS); // Fallback if data is weird
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load reflections:", err);
+        setRefs(MOCK_REFS); // Fallback to mock data if backend fails
+      });
   }, [riskLevel]);
 
   // Manual "Get Portfolio Check" button
@@ -2021,12 +2052,6 @@ export function VillainArc({ onBack, riskLevel }: any) {
     }
     setLoading(false);
   };
-
-  const refs = [
-    { id:"1", date:"Feb 15", tx:"Impulse gadget purchase",      amount:1200, emotion:"regret",   notes:"Bought latest phone when current one works fine. Classic FOMO spending." },
-    { id:"2", date:"Jan 28", tx:"Panic sold stocks during dip", amount:5000, emotion:"learning", notes:"Market dropped 10% and I panicked. Sold at a loss. Market recovered in weeks." },
-    { id:"3", date:"Jan 5",  tx:"FOMO'd into random crypto",    amount:2000, emotion:"learning", notes:"Lost 40% in a week. Research before investing in volatile assets." },
-  ];
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 100, paddingTop: 30 }}>
@@ -2135,22 +2160,120 @@ export function VillainArc({ onBack, riskLevel }: any) {
         </Card>
       ))}
 
-      {/* ── Add Reflection ── */}
-      <Card>
+{/* ── Add Reflection ── */}
+<Card>
         <Text style={{ fontWeight:"700", fontSize:15, color:C.text, marginBottom:12 }}>
           Add New Reflection
         </Text>
+
+        <TextInput
+          value={txName}
+          onChangeText={setTxName}
+          placeholder="Event (e.g. Panic sold stocks, Impulse buy)"
+          placeholderTextColor={C.muted}
+          style={[styles.input, { marginBottom: 8 }]}
+        />
+
+        <View style={{
+          flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.04)",
+          borderColor: C.cardBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, marginBottom: 12
+        }}>
+          <Text style={{ color: C.muted, fontSize: 14, marginRight: 4 }}>$</Text>
+          <TextInput
+            value={txAmount}
+            onChangeText={(txt) => setTxAmount(txt.replace(/[^0-9.]/g, ""))}
+            keyboardType="numeric"
+            placeholder="Amount lost or spent"
+            placeholderTextColor={C.muted}
+            style={{ flex: 1, fontSize: 15, fontWeight: "700", color: C.text, paddingVertical: 10 }}
+          />
+        </View>
+
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+          <TouchableOpacity 
+            onPress={() => setEmotion("regret")} 
+            style={{ 
+              flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 10, borderWidth: 1, 
+              borderColor: emotion === "regret" ? "#ef4444" : "transparent", 
+              backgroundColor: emotion === "regret" ? "#ef444415" : "rgba(0,0,0,0.03)" 
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: emotion === "regret" ? "#ef4444" : C.muted }}>😞 Regret</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            onPress={() => setEmotion("learning")} 
+            style={{ 
+              flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 10, borderWidth: 1, 
+              borderColor: emotion === "learning" ? "#3b82f6" : "transparent", 
+              backgroundColor: emotion === "learning" ? "#3b82f615" : "rgba(0,0,0,0.03)" 
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "600", color: emotion === "learning" ? "#3b82f6" : C.muted }}>💡 Learning</Text>
+          </TouchableOpacity>
+        </View>
         <TextInput
           value={note}
           onChangeText={setNote}
           placeholder="What happened? What did you learn?"
           placeholderTextColor={C.muted}
           multiline
-          numberOfLines={4}
-          style={[styles.input, { height:100, textAlignVertical:"top", marginBottom:12 }]}
+          numberOfLines={3}
+          style={[styles.input, { height:80, textAlignVertical:"top", marginBottom:12 }]}
         />
+
+        {/* ── ERROR MESSAGE DISPLAY ── */}
+        {errorMsg !== "" && (
+          <Text style={{ color: "#ef4444", fontSize: 13, marginBottom: 12, fontWeight: "600", textAlign: "center" }}>
+            {errorMsg}
+          </Text>
+        )}
+
         <TouchableOpacity
           style={{ padding:13, backgroundColor:"#6d28d9", borderRadius:12, alignItems:"center" }}
+          onPress={async () => {
+            // 1. Validation Check!
+            if (!txName.trim() || !txAmount.trim() || !note.trim()) {
+              setErrorMsg("⚠️ Please fill up all sections to save your reflection.");
+              return; // Stops the function from continuing
+            }
+
+            const amountNum = parseFloat(txAmount) || 0;
+
+            // 2. Instantly show it on screen
+            const newRef = {
+              id: Date.now().toString(),
+              date: "Today",
+              tx: txName,
+              amount: amountNum,
+              emotion: emotion,
+              notes: note
+            };
+            setRefs([newRef, ...refs]);
+
+            // 3. Send it to your Python backend
+            try {
+              await fetch(`${API_BASE_URL}/reflections`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  txName: txName,
+                  amount: amountNum,
+                  emotion: emotion,
+                  notes: note
+                })
+              });
+            } catch (err) {
+              console.error("Failed to save reflection:", err);
+            }
+            
+            // 4. Clear the form AND the error message
+            setTxName(""); 
+            setTxAmount(""); 
+            setNote(""); 
+            setEmotion("learning");
+            setErrorMsg(""); 
+          }}
         >
           <Text style={{ color:"white", fontSize:14, fontWeight:"700" }}>Save Reflection</Text>
         </TouchableOpacity>

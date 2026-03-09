@@ -57,6 +57,7 @@ HACKATHON_TOP_UP_TOTAL = 0
 HACKATHON_SABOTAGE_MODE = False
 # User-configurable guardrail: max amount they feel okay draining from Savings
 MAX_SAVINGS_SPEND = 20000.0
+TOTAL_DEBT = 0.0
 
 # --- MOCK FALLBACK DATA ---
 MOCK_ASSETS = [
@@ -175,17 +176,34 @@ async def get_portfolio():
         else:
             a['mood'] = 'neutral'
 
+    # Base 3‑month history (used if trajectory engine fails)
+    base_history = [
+        {"m": "Jan", "v": 465000},
+        {"m": "Feb", "v": 480000},
+        {"m": "Mar", "v": total},
+    ]
+
+    # Try to build a 6‑month past+future trajectory; fall back gracefully if anything breaks.
+    try:
+        trajectory = await build_portfolio_trajectory(
+            {"total": total, "assets": assets, "history": base_history, "health": health}
+        )
+        history = trajectory.get("points", base_history)
+    except Exception as e:
+        print("Trajectory engine error in /api/portfolio:", repr(e))
+        history = base_history
+    
+    net_total = max(0, total - TOTAL_DEBT)
+
     return {
-        "total": total,
+        "total": net_total,
+        "gross_total": total,
+        "debt": TOTAL_DEBT, 
         "assets": assets,
         "health": health,
         "wealth_age": wealth_age,
         "villain_event_active": villain_event_active,
-        "history": [
-            {"m": "Jan", "v": 465000},
-            {"m": "Feb", "v": 480000},
-            {"m": "Mar", "v": total}
-        ]
+        "history": history,
     }
 
 class SandboxPortfolio(BaseModel):
@@ -215,6 +233,18 @@ async def set_spend_threshold(req: SpendThresholdRequest):
     print(f"Updated MAX_SAVINGS_SPEND to {MAX_SAVINGS_SPEND}")
     return {"success": True, "max_savings_spend": MAX_SAVINGS_SPEND}
 
+class DebtRequest(BaseModel):
+    total_debt: float
+
+@app.get("/api/settings/debt")
+async def get_debt():
+    return {"total_debt": TOTAL_DEBT}
+
+@app.post("/api/settings/debt")
+async def set_debt(req: DebtRequest):
+    global TOTAL_DEBT
+    TOTAL_DEBT = max(0.0, float(req.total_debt))
+    return {"success": True, "total_debt": TOTAL_DEBT}
 
 class ManualAssetCreate(BaseModel):
     category: str
@@ -748,7 +778,7 @@ async def get_sandbox_portfolio():
     sandbox = await fetch_alpaca_portfolio()
     if sandbox is None:
         print("Sandbox portfolio: using fallback (Alpaca not available)")
-        # Fallback: reuse the existing logic from /api/portfolio"
+        # Fallback: reuse the existing logic from /api/portfolio
         return await get_portfolio()
 
     # Reuse existing health/wealth age logic so the blob + villain arc still work
@@ -760,7 +790,7 @@ async def get_sandbox_portfolio():
 
     total = sum(a["value"] for a in assets)
 
-    portfolio_obj = {"total": total, "assets": assets}
+    portfolio_obj = {"total": max(0, total-TOTAL_DEBT), "assets": assets, "gross_total":total, "debt":TOTAL_DEBT}
     health = calculate_health_score(portfolio_obj, villain_events_count=0, streak_avg=12)
     wealth_age = calculate_wealth_age(total, 35, health["overall"])
 
@@ -774,24 +804,35 @@ async def get_sandbox_portfolio():
             a["mood"] = "neutral"
 
     # Prefer Alpaca-derived 6M history when present, else fall back to mock.
+    # 1. Define the net total first     
+    net_total = total - TOTAL_DEBT
+
+    # 2. Use net_total for the mock history
     history = sandbox.history or [
         {"m": "Oct", "v": 445000},
         {"m": "Nov", "v": 458000},
         {"m": "Dec", "v": 472000},
         {"m": "Jan", "v": 465000},
         {"m": "Feb", "v": 480000},
-        {"m": "Mar", "v": total},
+        {"m": "Mar", "v": net_total},  # ✅ Changed
     ]
 
-    # Ensure the last point reflects the latest total
+    # 3. Ensure the last history point matches net worth
     if history:
-        history = history[:-1] + [{"m": history[-1]["m"], "v": total}]
+        history = history[:-1] + [{"m": history[-1]["m"], "v": net_total}] # ✅ Changed
+
+    # 4. Pass the net_total to the AI trajectory engine
+    trajectory = await build_portfolio_trajectory(
+        {"total": net_total, "assets": assets, "history": history, "health": health} # ✅ Changed
+    )
 
     return {
-        "total": total,
+        "total": net_total, # ✅ Changed
+        "gross_total": total,
+        "debt": TOTAL_DEBT,
         "assets": assets,
         "health": health,
         "wealth_age": wealth_age,
         "villain_event_active": False,
-        "history": history,
+        "history": trajectory.get("points", history),
     }

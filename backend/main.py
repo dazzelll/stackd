@@ -176,7 +176,9 @@ async def get_portfolio(db: Session = Depends(get_db)):
     portfolio_obj = {"total": total, "assets": assets}
     # Pass villain_events_count=1 when sabotaged so health score reflects it
     villain_events_count = 1 if HACKATHON_SABOTAGE_MODE else 0
-    health = calculate_health_score(portfolio_obj, villain_events_count=villain_events_count, streak_avg=12)
+    challenges_completed = db.query(models.Challenge).filter_by(completed=True).count()
+    streak_avg = db.query(sa_func.avg(models.Streak.current_count)).scalar() or 0
+    health = calculate_health_score(portfolio_obj, villain_events_count=villain_events_count, streak_avg=streak_avg, challenges_completed=challenges_completed)         
     wealth_age = calculate_wealth_age(total, 35, health["overall"])
 
     for a in assets:
@@ -678,11 +680,16 @@ class VillainRoastRequest(BaseModel):
     riskLevel: int = 5
 
 
+# 1. ADD 'db: Session = Depends(get_db)' HERE 👇
 @app.post("/api/villain/roast")
 async def get_villain_data(req: VillainRoastRequest, db: Session = Depends(get_db)):
     global HACKATHON_SABOTAGE_MODE
 
-    # Always fetch portfolio and generate AI advice
+    # FIX: Return early with empty alerts when sabotage is not active
+    if not HACKATHON_SABOTAGE_MODE:
+        return {"alerts": [], "caughtIn4K": [], "history": []}
+
+    # 2. PASS 'db' INTO THIS FUNCTION CALL 👇
     portfolio_snapshot = await get_sandbox_portfolio(db)
     assets_for_ai = portfolio_snapshot.get("assets", [])
     dynamic_message, action_steps = await generate_villain_roast(assets_for_ai, req.riskLevel)
@@ -857,8 +864,8 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
     if sandbox is None:
         print("Sandbox portfolio: using fallback (Alpaca not available)")
         # Fallback: reuse the existing logic from /api/portfolio
-        return await get_portfolio()
-
+        return await get_portfolio(db) 
+    
     # Start from rich mock portfolio so the user always sees a full range of
     # assets, then layer Alpaca sandbox values + manual assets on top.
     alpaca_assets = {a.get("name"): a for a in (sandbox.assets or [])}
@@ -940,7 +947,34 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
                 a["pct"] = 0
 
     portfolio_obj = {"total": max(0, total-TOTAL_DEBT), "assets": assets, "gross_total":total, "debt":TOTAL_DEBT}
-    health = calculate_health_score(portfolio_obj, villain_events_count=0, streak_avg=12)
+    
+    # ── DB QUERY FOR REAL STATS ──
+    user = db.query(models.User).first()
+    villain_count = 0
+    total_streaks = 0
+    challenges_done = 0
+
+    if user:
+        villain_count = db.query(models.VillainArcEvent).filter(
+            models.VillainArcEvent.user_id == user.id
+        ).count()
+        
+        total_streaks = db.query(sa_func.sum(models.Streak.current_count)).filter(
+            models.Streak.user_id == user.id
+        ).scalar() or 0
+        
+        challenges_done = db.query(models.Challenge).filter(
+            models.Challenge.user_id == user.id, 
+            models.Challenge.completed == True
+        ).count()
+
+    # Pass the actual DB counts into the engine!
+    health = calculate_health_score(
+        portfolio_obj, 
+        villain_events_count=villain_count, 
+        streak_avg=total_streaks,
+        completed_challenges=challenges_done
+    )    
     wealth_age = calculate_wealth_age(total, 35, health["overall"])
 
     # Ensure moods for blobs

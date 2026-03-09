@@ -17,7 +17,7 @@ FRED_API_KEY = os.getenv("FRED_API_KEY")
 URA_ACCESS_KEY = os.getenv("URA_ACCESS_KEY")
 
 # --- SCORING ENGINE ---
-def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0):
+def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0, completed_challenges=0): # Added completed_challenges
     assets = portfolio.get('assets', [])
     total = portfolio.get('total', 0)
     if total == 0: return {"overall": 0, "diversification": 0, "liquidity": 0, "behavioral_resilience": 0}
@@ -56,10 +56,12 @@ def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0):
         liquidity = max(50, 100 - (weighted_liquidity - 0.7) * 100) # too liquid, opportunity cost
     liquidity = round(min(100, max(0, liquidity)))
 
-    # Resilience
-    villain_penalty = min(40, villain_events_count * 10)
-    streak_bonus = min(20, (streak_avg or 0) * 2)
-    resilience = max(0, min(100, 60 + streak_bonus - villain_penalty))
+# ── UPDATED: Meaningful Behavioral Resilience ──
+    villain_penalty = min(50, villain_events_count * 10) 
+    streak_bonus = min(25, (streak_avg or 0) * 2)        
+    challenge_bonus = min(25, completed_challenges * 5)  
+
+    resilience = max(0, min(100, 50 + streak_bonus + challenge_bonus - villain_penalty))
 
     # Crypto Penalty
     crypto_pct = next((a['pct'] for a in assets if a['name'] == 'Crypto'), 0)
@@ -74,6 +76,7 @@ def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0):
         "liquidity": min(100, liquidity),
         "behavioral_resilience": resilience
     }
+
 
 def calculate_wealth_age(total_wealth, real_age, health_score):
     benchmarks = {

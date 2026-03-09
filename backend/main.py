@@ -890,3 +890,50 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
         "villain_event_active": False,
         "history": trajectory.get("points", history),
     }
+
+class ReflectionCreate(BaseModel):
+    txName: str
+    amount: float
+    emotion: str
+    notes: str
+
+@app.post("/api/reflections")
+async def log_reflection(entry: ReflectionCreate, db: Session = Depends(get_db)):
+    """Save a new reflection to the database"""
+    from datetime import date
+    
+    log = models.VillainArcEvent(
+        user_id=None, # In a real app, this would be the logged-in user's ID
+        description=entry.txName,
+        amount=entry.amount,
+        emotion=entry.emotion,
+        notes=entry.notes,
+        event_date=date.today()
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return {"status": "success"}
+
+@app.get("/api/reflections")
+async def get_reflections(db: Session = Depends(get_db)):
+    """Fetch all saved reflections"""
+    rows = (
+        db.query(models.VillainArcEvent)
+        .order_by(models.VillainArcEvent.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    
+    # Format them so the frontend can read them easily
+    return [
+        {
+            "id": r.id,
+            "tx": r.description,
+            "amount": float(r.amount or 0),
+            "emotion": r.emotion,
+            "notes": r.notes,
+            "date": r.event_date.strftime("%b %d") if r.event_date else "Today"
+        }
+        for r in rows
+    ]

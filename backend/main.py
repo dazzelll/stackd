@@ -6,6 +6,7 @@ import httpx
 from fastapi import FastAPI, Depends, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import func as sa_func
 from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 import stripe
@@ -315,7 +316,7 @@ def _manual_asset_totals(db: Session) -> dict[str, float]:
     into the main portfolio (Real Estate & Others, Stocks, Savings, Crypto, Bonds).
     """
     rows = (
-        db.query(models.ManualAssetLog.category, models.func.sum(models.ManualAssetLog.amount))
+        db.query(models.ManualAssetLog.category, sa_func.sum(models.ManualAssetLog.amount))
         .group_by(models.ManualAssetLog.category)
         .all()
     )
@@ -326,6 +327,33 @@ def _manual_asset_totals(db: Session) -> dict[str, float]:
         except (TypeError, ValueError):
             continue
     return totals
+
+
+def _manual_asset_holdings(db: Session, limit: int = 50) -> dict[str, list[dict]]:
+    """
+    Return per-category "holdings" derived from manual logs so the asset detail
+    sheet can show what's inside Real Estate & Others (and any other category).
+    """
+    rows = (
+        db.query(models.ManualAssetLog)
+        .order_by(models.ManualAssetLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    by_cat: dict[str, list[dict]] = {}
+    for r in rows:
+        cat = str(getattr(r, "category", "") or "")
+        if not cat:
+            continue
+        by_cat.setdefault(cat, []).append(
+            {
+                "ticker": "MAN",
+                "name": str(getattr(r, "label", "") or "Manual asset"),
+                "value": float(getattr(r, "amount", 0) or 0),
+                "change": 0,
+            }
+        )
+    return by_cat
 
 def _get_supplemental_assets() -> list[dict]:
     """Optional non-Alpaca wealth (Real Estate, Crypto, Bonds). Set in .env or 0."""
@@ -836,31 +864,80 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
     alpaca_assets = {a.get("name"): a for a in (sandbox.assets or [])}
     assets = copy.deepcopy(MOCK_ASSETS)
 
-    # 1) Add Alpaca values (typically savings + stocks)
+    # 1) Add Alpaca values (typically savings + stocks) on top of mock baseline,
+    # and copy rich fields so the asset detail sheet can show live holdings/history.
     for a in assets:
         name = a.get("name")
+        base_val = float(a.get("value", 0) or 0.0)
         src = alpaca_assets.get(name)
         if src:
             try:
-                a["value"] += float(src.get("value", 0) or 0)
+                a["value"] = base_val + float(src.get("value", 0) or 0)
             except (TypeError, ValueError):
                 pass
 
+            # Holdings: include a baseline "Other" item so holdings sum matches value
+            if src.get("holdings") is not None:
+                holdings = list(src.get("holdings") or [])
+                if base_val > 0:
+                    holdings = (
+                        [{"ticker": "DEMO", "name": "Other holdings", "value": round(base_val, 2), "change": 0}]
+                        + holdings
+                    )
+                a["holdings"] = holdings
+
+            # History: shift Alpaca history up by the baseline so the chart matches totals
+            if src.get("history") is not None:
+                hist = list(src.get("history") or [])
+                if base_val > 0 and hist:
+                    shifted = []
+                    for p in hist:
+                        try:
+                            shifted.append({"m": p.get("m"), "v": float(p.get("v", 0) or 0) + base_val})
+                        except Exception:
+                            continue
+                    a["history"] = shifted
+                else:
+                    a["history"] = hist
+
+            # Copy any simple perf fields when present (best-effort)
+            for k in ("day", "week", "month", "year"):
+                if k in src and src.get(k) is not None:
+                    a[k] = src.get(k)
+
     # 2) Add manual assets from settings (real estate, side hustles, etc.)
     manual_totals = _manual_asset_totals(db)
+    manual_holdings = _manual_asset_holdings(db)
     for a in assets:
-        extra = manual_totals.get(a.get("name"))
+        nm = a.get("name")
+        extra = manual_totals.get(nm)
         if extra:
             try:
                 a["value"] += float(extra)
             except (TypeError, ValueError):
                 pass
+        mh = manual_holdings.get(nm)
+        if mh:
+            # If we already have holdings (e.g. from Alpaca), append; otherwise set.
+            existing = a.get("holdings")
+            if isinstance(existing, list) and existing:
+                a["holdings"] = existing + mh
+            else:
+                a["holdings"] = mh
 
     # If sabotage mode is active, apply the same overspend damage here so the
     # dashboard blobs and detail views show the villain‑arc version too.
     assets = _apply_sabotage_to_assets(assets)
 
     total = sum(float(a.get("value", 0) or 0.0) for a in assets)
+
+    # Recompute portfolio % allocations from the latest values
+    if total > 0:
+        for a in assets:
+            try:
+                a["pct"] = round((float(a.get("value", 0) or 0.0) / total) * 100)
+            except Exception:
+                a["pct"] = 0
 
     portfolio_obj = {"total": max(0, total-TOTAL_DEBT), "assets": assets, "gross_total":total, "debt":TOTAL_DEBT}
     health = calculate_health_score(portfolio_obj, villain_events_count=0, streak_avg=12)
@@ -912,3 +989,50 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
         "villain_event_active": False,
         "history": trajectory.get("points", history),
     }
+
+class ReflectionCreate(BaseModel):
+    txName: str
+    amount: float
+    emotion: str
+    notes: str
+
+@app.post("/api/reflections")
+async def log_reflection(entry: ReflectionCreate, db: Session = Depends(get_db)):
+    """Save a new reflection to the database"""
+    from datetime import date
+    
+    log = models.VillainArcEvent(
+        user_id=None, # In a real app, this would be the logged-in user's ID
+        description=entry.txName,
+        amount=entry.amount,
+        emotion=entry.emotion,
+        notes=entry.notes,
+        event_date=date.today()
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return {"status": "success"}
+
+@app.get("/api/reflections")
+async def get_reflections(db: Session = Depends(get_db)):
+    """Fetch all saved reflections"""
+    rows = (
+        db.query(models.VillainArcEvent)
+        .order_by(models.VillainArcEvent.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    
+    # Format them so the frontend can read them easily
+    return [
+        {
+            "id": r.id,
+            "tx": r.description,
+            "amount": float(r.amount or 0),
+            "emotion": r.emotion,
+            "notes": r.notes,
+            "date": r.event_date.strftime("%b %d") if r.event_date else "Today"
+        }
+        for r in rows
+    ]

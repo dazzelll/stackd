@@ -344,7 +344,7 @@ async def fetch_alpaca_portfolio() -> SandboxPortfolio | None:
         "APCA-API-SECRET-KEY": ALPACA_API_SECRET_KEY,
     }
 
-    async with httpx.AsyncClient(base_url=ALPACA_BASE_URL, headers=headers, timeout=5.0) as client:
+    async with httpx.AsyncClient(base_url=ALPACA_BASE_URL, headers=headers, timeout=10.0) as client:
         try:
             acct_resp = await client.get("/v2/account")
             acct_resp.raise_for_status()
@@ -751,14 +751,26 @@ async def get_sandbox_portfolio():
         # Fallback: reuse the existing logic from /api/portfolio"
         return await get_portfolio()
 
-    # Reuse existing health/wealth age logic so the blob + villain arc still work
-    assets = sandbox.assets
+    # Merge Alpaca sandbox values into rich mock portfolio so the user always
+    # sees a full range of assets, while Alpaca contributes real cash/stocks.
+    alpaca_assets = {a.get("name"): a for a in (sandbox.assets or [])}
+    assets = copy.deepcopy(MOCK_ASSETS)
+
+    for a in assets:
+        name = a.get("name")
+        src = alpaca_assets.get(name)
+        if not src:
+            continue
+        try:
+            a["value"] += float(src.get("value", 0) or 0)
+        except (TypeError, ValueError):
+            pass
 
     # If sabotage mode is active, apply the same overspend damage here so the
     # dashboard blobs and detail views show the villain‑arc version too.
     assets = _apply_sabotage_to_assets(assets)
 
-    total = sum(a["value"] for a in assets)
+    total = sum(float(a.get("value", 0) or 0.0) for a in assets)
 
     portfolio_obj = {"total": total, "assets": assets}
     health = calculate_health_score(portfolio_obj, villain_events_count=0, streak_avg=12)
@@ -773,8 +785,8 @@ async def get_sandbox_portfolio():
         else:
             a["mood"] = "neutral"
 
-    # Prefer Alpaca-derived 6M history when present, else fall back to mock.
-    history = sandbox.history or [
+    # Simple 6M history anchored to the merged total.
+    history = [
         {"m": "Oct", "v": 445000},
         {"m": "Nov", "v": 458000},
         {"m": "Dec", "v": 472000},
@@ -782,10 +794,6 @@ async def get_sandbox_portfolio():
         {"m": "Feb", "v": 480000},
         {"m": "Mar", "v": total},
     ]
-
-    # Ensure the last point reflects the latest total
-    if history:
-        history = history[:-1] + [{"m": history[-1]["m"], "v": total}]
 
     return {
         "total": total,

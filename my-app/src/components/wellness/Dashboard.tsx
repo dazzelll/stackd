@@ -16,7 +16,7 @@ import { AssetDetailSheet } from "./AssetDetailSheet";
 import { Gift, Zap, Bitcoin, PiggyBank, Home, ChartLine, ScrollText, TrendingUp  } from "lucide-react-native";
 import { API_BASE_URL } from "../../lib/api";
 
-export function Dashboard({ onNavigate, mode }: any) {
+export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
   const [selAsset, setSelAsset] = useState<any>(null);
 
   const [assets, setAssets] = useState(FALLBACK_ASSETS);
@@ -40,6 +40,14 @@ export function Dashboard({ onNavigate, mode }: any) {
 
   // Use sandbox (Alpaca + supplemental) so numbers reflect real/live data, not static mock
   const fetchPortfolio = () => {
+    if (useDemoAccount) {
+      setAssets(FALLBACK_ASSETS);
+      setTotalWealth(WEALTH_HISTORY[WEALTH_HISTORY.length - 1].v);
+      setHealth(null);
+      setTrajectory(WEALTH_HISTORY);
+      return;
+    }
+
     fetch(`${API_BASE_URL}/portfolio/sandbox`)
       .then((res) => res.json())
       .then((data) => {
@@ -88,7 +96,7 @@ export function Dashboard({ onNavigate, mode }: any) {
   // Run once on mount
   useEffect(() => {
     fetchPortfolio();
-  }, []);
+  }, [useDemoAccount]);
 
   // ACT 1: Connect Bank
   const handleConnectBank = () => {

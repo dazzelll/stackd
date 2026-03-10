@@ -183,12 +183,21 @@ async def get_portfolio(db: Session = Depends(get_db)):
         a["pct"] = round((a["value"] / total) * 100) if total > 0 else 0
 
     portfolio_obj = {"total": total, "assets": assets}
-    # Pass villain_events_count=1 when sabotaged so health score reflects it
+# 🟢 1. PENALTY: Count only "regret" reflections
     villain_events_count = db.query(models.VillainArcEvent).filter(
-    models.VillainArcEvent.user_id.is_(None)
+        models.VillainArcEvent.user_id.is_(None),
+        models.VillainArcEvent.emotion == "regret"
     ).count()
+    
+    # 🟢 2. BONUS: Count only "learning" reflections
+    learning_events_count = db.query(models.VillainArcEvent).filter(
+        models.VillainArcEvent.user_id.is_(None),
+        models.VillainArcEvent.emotion == "learning"
+    ).count()
+
     if HACKATHON_SABOTAGE_MODE:
         villain_events_count += 1
+        
     challenges_completed = (
     db.query(models.Challenge)
     .filter(models.Challenge.completed == True, models.Challenge.user_id.is_(None))
@@ -206,8 +215,9 @@ async def get_portfolio(db: Session = Depends(get_db)):
         portfolio_obj,
         villain_events_count=villain_events_count,
         streak_avg=streak_avg,
-        challenges_completed=challenges_completed
-    )            
+        challenges_completed=challenges_completed,
+        learning_reflections_count=learning_events_count # 🟢 ADD THE LEARNING COUNT HERE
+    )
 
     wealth_age = calculate_wealth_age(total, 35, health["overall"])
 
@@ -1151,11 +1161,21 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
 
     portfolio_obj = {"total": max(0, total-TOTAL_DEBT), "assets": assets, "gross_total":total, "debt":TOTAL_DEBT}
     
-    # ── DB QUERY FOR REAL STATS ──
+# ── DB QUERY FOR REAL STATS ──
     # Anonymous demo user — all records have user_id=None
+    
+    # 🟢 1. PENALTY: Count only "regret" reflections
     villain_count = db.query(models.VillainArcEvent).filter(
-        models.VillainArcEvent.user_id.is_(None)
+        models.VillainArcEvent.user_id.is_(None),
+        models.VillainArcEvent.emotion == "regret"
     ).count()
+    
+    # 🟢 2. BONUS: Count only "learning" reflections
+    learning_count = db.query(models.VillainArcEvent).filter(
+        models.VillainArcEvent.user_id.is_(None),
+        models.VillainArcEvent.emotion == "learning"
+    ).count()
+
     if HACKATHON_SABOTAGE_MODE:
         villain_count += 1
 
@@ -1176,7 +1196,8 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
         portfolio_obj,
         villain_events_count=villain_count,
         streak_avg=streak_avg,
-        challenges_completed=challenges_done   # ← fixed param name to match engines.py
+        challenges_completed=challenges_done,   # ← fixed param name to match engines.py
+        learning_reflections_count=learning_count # 🟢 ADD THE LEARNING COUNT HERE
     )
     
     wealth_age = calculate_wealth_age(total, 35, health["overall"])
@@ -1366,3 +1387,28 @@ async def create_goal(goal_in: GoalCreate, db: Session = Depends(get_db)):
 async def get_goals(db: Session = Depends(get_db)):
     """Fetch all saved goals"""
     return db.query(models.Goal).order_by(models.Goal.created_at.desc()).all()
+
+class ChallengeClaim(BaseModel):
+    title: str
+
+@app.post("/api/challenges/claim")
+async def claim_challenge(req: ChallengeClaim, db: Session = Depends(get_db)):
+    """Save a completed challenge to the database so it boosts resilience"""
+    chal = models.Challenge(
+        user_id=None,
+        title=req.title,  # 🟢 FIX: We must actually save the title!
+        completed=True
+    )
+    db.add(chal)
+    db.commit()
+    return {"success": True}
+
+@app.get("/api/challenges/claimed")
+async def get_claimed_challenges(db: Session = Depends(get_db)):
+    """Fetch all claimed challenge titles to restore state on frontend load"""
+    rows = db.query(models.Challenge).filter(
+        models.Challenge.user_id.is_(None),
+        models.Challenge.completed == True
+    ).all()
+    # Return a simple list of the titles that have been claimed
+    return [r.title for r in rows]

@@ -195,7 +195,7 @@ export function EventSimulator({ onBack }: any) {
   useEffect(() => {
     async function fetchLiveTotal() {
       try {
-        const response = await fetch("http://localhost:8000/api/portfolio/sandbox");
+        const response = await fetch(`${API_BASE_URL}/portfolio/sandbox`);
         const data = await response.json();
         setCurrent(data.total || 0);
       } catch (error) {
@@ -211,8 +211,7 @@ export function EventSimulator({ onBack }: any) {
     setRes(null);
 
     try {
-      // Connects to the text-parsing backend we built!
-      const response = await fetch("http://localhost:8000/api/simulator/run", {
+      const response = await fetch(`${API_BASE_URL}/simulator/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenario }),
@@ -1558,7 +1557,6 @@ export function ManualAssets({ onBack }: any) {
 }
 
 // ─── CHALLENGES ───────────────────────────────────────────────────────────────
-// ─── CHALLENGES ───────────────────────────────────────────────────────────────
 export function Challenges({ onBack }: any) {
   const [points, setPoints] = useState(3975);
   const [showLevels, setShowLevels] = useState(false);
@@ -1625,6 +1623,31 @@ export function Challenges({ onBack }: any) {
     },
   ]);
 
+  // Fetch claimed challenges on mount and update UI
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/challenges/claimed`)
+      .then(res => res.json())
+      .then(claimedTitles => {
+        if (Array.isArray(claimedTitles)) {
+          setCh(prev => {
+            let earnedPoints = 0;
+            const updatedChallenges = prev.map(c => {
+              // If the DB says this title is claimed, update it!
+              if (claimedTitles.includes(c.title)) {
+                earnedPoints += c.reward;
+                return { ...c, claimed: true, progress: c.total };
+              }
+              return c;
+            });
+            // Update the total points (Base points + newly earned points)
+            setPoints(3975 + earnedPoints);
+            return updatedChallenges;
+          });
+        }
+      })
+      .catch(e => console.error("Failed to load claimed challenges", e));
+  }, []);
+
   // ── Level config ──
   const LEVELS = [
     { name: "Broke Beginner", min: 0, max: 199, color: "#9ca3af", emoji: "🥚" },
@@ -1671,12 +1694,24 @@ export function Challenges({ onBack }: any) {
     ? ((points - currentLevel.min) / (nextLevel.min - currentLevel.min)) * 100
     : 100;
 
-  const claim = (id: string, reward: number) => {
-    setPoints((p) => p + reward);
-    setCh((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, claimed: true } : c))
-    );
-  };
+    const claim = async (id: string, reward: number, title: string) => {
+      // 1. Update the UI instantly
+      setPoints((p) => p + reward);
+      setCh((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, claimed: true } : c))
+      );
+  
+      // 2. Tell the Python backend to save it permanently!
+      try {
+        await fetch(`${API_BASE_URL}/challenges/claim`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: title })
+        });
+      } catch (e) {
+        console.log("Failed to sync challenge with backend", e);
+      }
+    };
 
   return (
     <ScrollView contentContainerStyle={{ paddingBottom: 100, paddingTop: 30 }}>
@@ -1966,7 +2001,7 @@ export function Challenges({ onBack }: any) {
                   </Text>
                   {done && !c.claimed && (
                     <TouchableOpacity
-                      onPress={() => claim(c.id, c.reward)}
+                    onPress={() => claim(c.id, c.reward, c.title)}
                       style={{
                         backgroundColor: "#f59e0b",
                         borderRadius: 99,

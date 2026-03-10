@@ -37,7 +37,7 @@ HISTORY_SEEDED_STREAKS = {
 }
 
 # --- SCORING ENGINE ---
-def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0, challenges_completed=0): # Added completed_challenges
+def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0, challenges_completed=0, learning_reflections_count=0):
     assets = portfolio.get('assets', [])
     total = portfolio.get('total', 0)
     if total == 0: return {"overall": 0, "diversification": 0, "liquidity": 0, "behavioral_resilience": 0}
@@ -80,8 +80,12 @@ def calculate_health_score(portfolio, villain_events_count=0, streak_avg=0, chal
     villain_penalty = min(50, villain_events_count * 10) 
     streak_bonus = min(25, (streak_avg or 0) * 2)        
     challenge_bonus = min(25, challenges_completed * 5)  
+    
+    # 🟢 2. ADD THE LEARNING BONUS (+5 points for every learning reflection)
+    learning_bonus = min(25, learning_reflections_count * 5)
 
-    resilience = max(0, min(100, 50 + streak_bonus + challenge_bonus - villain_penalty))
+    # 🟢 3. ADD IT TO THE TOTAL RESILIENCE
+    resilience = max(0, min(100, 50 + streak_bonus + challenge_bonus + learning_bonus - villain_penalty))
 
     # Crypto Penalty
     crypto_pct = next((a['pct'] for a in assets if a['name'] == 'Crypto'), 0)
@@ -603,7 +607,7 @@ async def _build_trajectory_uncached(portfolio: dict) -> dict:
         r = 0.0
         for cls, w in weights.items():
             r += w * r_class.get(cls, 0.005)
-        return max(-0.06, min(0.08, r))
+        return max(-0.06, min(0.01, r))
 
     port_r = _portfolio_monthly_return()
 

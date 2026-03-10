@@ -645,7 +645,7 @@ export function ManifestationBoard({ onBack }: any) {
           <Text style={{ fontWeight:"800", fontSize:15, color:"#7c3aed" }}>The Prophecy</Text>
         </View>
         <Text style={{ fontSize:12, color:C.muted, marginBottom:12 }}>
-          Mystical AI predictions tailored to a Risk Level of {riskLevel}/10
+        Tap below to summon an actionable strategy based on your goals and a {riskLevel}/10 risk level.        
         </Text>
 
         {prophecy ? (
@@ -1321,8 +1321,12 @@ export function Streaks({ onBack }: any) {
             </View>
             <ProgressBar value={pct} color={col} height={7} />
             {s.current === 0 && (
-              <Text style={{ fontSize: 11, color: "#ef4444", marginTop: 6 }}>⚠️ Streak broken — restart today!</Text>
-            )}
+          <Text style={{ fontSize: 12, color: "#ef4444", marginTop: 8, fontWeight: "500" }}>
+            {s.type === 'learning' 
+              ? "⚠️ Log a 'Learning' in Reflections to restore!" 
+              : "⚠️ Streak broken — restart today!"}
+          </Text>
+        )}
           </Card>
         );
       })}

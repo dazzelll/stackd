@@ -117,19 +117,22 @@ npm run dev
 # App at http://localhost:3000
 ```
 
-### 4. Android Virtual Device
+### 4. Android Virtual Device OR Web
 
-Ensure [Android Studio](https://developer.android.com/studio) is installed with an emulator configured, then:
-
+Ensure [Android Studio](https://developer.android.com/studio) is installed with an emulator configured, then:\
+Device: Android Verion 15 'Vanilla Ice Cream'
 ```bash
 # Terminal 1
 cd backend
 uvicorn main:app --reload
 
-# Terminal 2
+# Terminal 2 (if AVD)
 cd my-app
 npx expo start
 # Press 'a' to open on the Android emulator
+# Terminal 2 (if Web)
+cd my-app
+npx expo start --web
 ```
 
 > If the backend is unreachable on the emulator, replace `localhost` with `10.0.2.2` in API calls — Android maps this to your machine's localhost.

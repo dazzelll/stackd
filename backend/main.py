@@ -1394,14 +1394,27 @@ class ChallengeClaim(BaseModel):
 @app.post("/api/challenges/claim")
 async def claim_challenge(req: ChallengeClaim, db: Session = Depends(get_db)):
     """Save a completed challenge to the database so it boosts resilience"""
-    chal = models.Challenge(
-        user_id=None,
-        title=req.title,  # 🟢 FIX: We must actually save the title!
-        completed=True
-    )
-    db.add(chal)
-    db.commit()
-    return {"success": True}
+    try:
+        # 🟢 FIX: Check if it already exists to prevent duplicate rows!
+        existing = db.query(models.Challenge).filter(
+            models.Challenge.user_id.is_(None),
+            models.Challenge.title == req.title
+        ).first()
+        
+        if not existing:
+            chal = models.Challenge(
+                user_id=None,
+                title=req.title,
+                completed=True
+            )
+            db.add(chal)
+            db.commit()
+            
+        return {"success": True}
+    except Exception as e:
+        print("Error saving challenge:", repr(e))
+        db.rollback()
+        return {"success": False}
 
 @app.get("/api/challenges/claimed")
 async def get_claimed_challenges(db: Session = Depends(get_db)):

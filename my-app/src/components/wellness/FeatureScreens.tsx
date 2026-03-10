@@ -1623,30 +1623,31 @@ export function Challenges({ onBack }: any) {
     },
   ]);
 
-  // Fetch claimed challenges on mount and update UI
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/challenges/claimed`)
-      .then(res => res.json())
-      .then(claimedTitles => {
-        if (Array.isArray(claimedTitles)) {
-          setCh(prev => {
-            let earnedPoints = 0;
-            const updatedChallenges = prev.map(c => {
-              // If the DB says this title is claimed, update it!
-              if (claimedTitles.includes(c.title)) {
-                earnedPoints += c.reward;
-                return { ...c, claimed: true, progress: c.total };
-              }
-              return c;
-            });
-            // Update the total points (Base points + newly earned points)
-            setPoints(3975 + earnedPoints);
-            return updatedChallenges;
+// Fetch claimed challenges on mount and update UI
+useEffect(() => {
+  // 🟢 FIX: Added ?t=${Date.now()} to bust React Native's aggressive fetch cache!
+  fetch(`${API_BASE_URL}/challenges/claimed?t=${Date.now()}`)
+    .then(res => res.json())
+    .then(claimedTitles => {
+      if (Array.isArray(claimedTitles)) {
+        setCh(prev => {
+          let earnedPoints = 0;
+          const updatedChallenges = prev.map(c => {
+            // If the DB says this title is claimed, update it!
+            if (claimedTitles.includes(c.title)) {
+              earnedPoints += c.reward;
+              return { ...c, claimed: true, progress: c.total };
+            }
+            return c;
           });
-        }
-      })
-      .catch(e => console.error("Failed to load claimed challenges", e));
-  }, []);
+          // Update the total points (Base points + newly earned points)
+          setPoints(3975 + earnedPoints);
+          return updatedChallenges;
+        });
+      }
+    })
+    .catch(e => console.error("Failed to load claimed challenges", e));
+}, []);
 
   // ── Level config ──
   const LEVELS = [

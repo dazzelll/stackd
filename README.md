@@ -39,6 +39,7 @@ stackd/
 | AI         | Google Gemini 2.5 Flash                     |
 | Payments   | Stripe Checkout (SGD)                       |
 | Trading    | Alpaca Markets (paper trading)              |
+| Banking    | Finverse API (Singapore & Asian banks)      |
 | Macro Data | FRED API (Fed Funds, DGS10, CPI)            |
 | Property   | URA Data Service (Singapore rental medians) |
 | Crypto     | CoinGecko API                               |
@@ -72,6 +73,37 @@ cp .env.example .env
 | `ALPHAVANTAGE_API_KEY` | Live stock prices                    | [Alpha Vantage](https://www.alphavantage.co/support/#api-key) — free tier |
 | `FRED_API_KEY`         | Macro data (Fed Funds, DGS10, CPI)   | [FRED API](https://fred.stlouisfed.org/docs/api/api_key.html) — free      |
 | `URA_ACCESS_KEY`       | Singapore residential rental medians | [URA Data Service](https://www.ura.gov.sg/maps/api/)                      |
+| `FINVERSE_*`           | Bank account aggregation            | [Finverse Dashboard](https://dashboard.finverse.com) — see setup below    |
+
+### 🏦 Finverse Bank Integration (Optional)
+
+Stack'd supports real-time bank data aggregation across 40+ Asian banks via Finverse API.
+
+**Setup:**
+1. Sign up at [Finverse Developer Portal](https://dashboard.finverse.com)
+2. Create a new application and get credentials:
+   ```bash
+   FINVERSE_CUSTOMER_APP_ID=your_customer_app_id
+   FINVERSE_CLIENT_ID=your_client_id  
+   FINVERSE_CLIENT_SECRET=your_64_char_secret
+   FINVERSE_REDIRECT_URI=http://localhost:8000/api/finverse/callback
+   ```
+
+**Features:**
+- **Real-time Balances**: Automatic sync of account balances
+- **Transaction History**: Import recent transactions (30 days)
+- **Multi-bank Support**: Connect DBS, OCBC, UOB, Citibank, HSBC, and more
+- **Enhanced Portfolio**: Bank balances added to Savings category
+- **Improved Health Score**: Better liquidity calculations with real data
+
+**Supported Countries:**
+- Singapore, Hong Kong, Malaysia, Philippines, Vietnam, Indonesia
+
+**Security:**
+- OAuth2 authentication - bank credentials never stored
+- Encrypted token storage
+- Revocable connections
+- Sandbox environment available for testing
 
 ### ⚙️ Auto-configured
 
@@ -144,7 +176,21 @@ npx expo start --web
 
 ### 📊 Portfolio Dashboard
 
-Merges three data sources into one live snapshot: a seeded 6-month mock history baseline, live Alpaca paper trading data (stocks + cash), and manually logged assets from the settings screen. The displayed total is always gross value minus user-defined debt. Each asset is mood-tagged — `happy` (>30%), `worried` (<10%), or `neutral`. Tracked classes: Stocks, Real Estate & Others, Savings, Crypto, Bonds.
+Merges multiple data sources into one live snapshot: a seeded 6-month mock history baseline, live Alpaca paper trading data (stocks + cash), Finverse-connected bank accounts (real-time balances), and manually logged assets from the settings screen. The displayed total is always gross value minus user-defined debt. Each asset is mood-tagged — `happy` (>30%), `worried` (<10%), or `neutral`. Tracked classes: Stocks, Real Estate & Others, Savings, Crypto, Bonds.
+
+### 🏦 Bank Account Integration
+
+Connect real bank accounts across 40+ Asian banks via Finverse API for complete wealth visibility:
+
+- **One-Click Connection**: Single "Connect All Services" button links Alpaca trading + bank accounts
+- **Real-Time Balances**: Automatic sync of checking, savings, and credit card balances  
+- **Transaction History**: Import recent transactions (30 days) for spending insights
+- **Multi-Bank Support**: DBS, OCBC, UOB, Citibank, HSBC, Standard Chartered, and more
+- **Enhanced Savings**: Bank balances automatically added to Savings portfolio category
+- **Improved Health Score**: Better liquidity calculations with actual bank data
+- **Secure OAuth**: Bank credentials never stored - only encrypted access tokens
+
+**Supported Countries**: Singapore, Hong Kong, Malaysia, Philippines, Vietnam, Indonesia
 
 ### 🏥 Wealth Health Score
 

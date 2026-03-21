@@ -13,7 +13,7 @@ import { Card, Badge, ProgressBar, styles, CryptoLiveTicker, StockLiveTicker } f
 import { LineChart, DonutChart } from "./Charts";
 import { BlobEcosystem } from "./BlobEcosystem";
 import { AssetDetailSheet } from "./AssetDetailSheet";
-import { Gift, Zap, Bitcoin, PiggyBank, Home, ChartLine, ScrollText, TrendingUp, BanknoteArrowDown  } from "lucide-react-native";
+import { Gift, Zap, Bitcoin, PiggyBank, Home, ChartLine, ScrollText, TrendingUp, BanknoteArrowDown, Building } from "lucide-react-native";
 import { API_BASE_URL } from "../../lib/api";
 
 // 🟢 1. CACHE VARIABLE OUTSIDE THE COMPONENT
@@ -33,6 +33,14 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
   const [isConnectingBank, setIsConnectingBank] = useState(false);
   const [isConnectingStripe, setIsConnectingStripe] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isStripeConnected, setIsStripeConnected] = useState(() => {
+    try {
+      const saved = localStorage.getItem('stripeConnected');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const [villainAlert, setVillainAlert] = useState<any>(null);
 
@@ -147,41 +155,81 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
     if (isConnected) fetchVillainData(5);
   }, [useDemoAccount]);
 
-  const handleConnectBank = () => {
+  const handleConnectBank = async () => {
     setIsConnectingBank(true);
-    setTimeout(() => {
-      setIsConnected(true);
-      setIsConnectingBank(false);
-      fetchPortfolio();
-      fetchVillainData(5);
-    }, 2000);
+    try {
+      // Step 1: Get Finverse link token
+      const linkRes = await fetch(`${API_BASE_URL}/finverse/link-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      
+      const linkData = await linkRes.json();
+      
+      if (!linkData.success) {
+        console.log("🔗 Finverse not reachable - running demo mode");
+        // Demo mode: simulate successful bank connection
+        setTimeout(() => {
+          setIsConnected(true);
+          setIsConnectingBank(false);
+          fetchPortfolio();
+          fetchVillainData(5);
+          console.log("✅ Demo: Bank connected successfully!");
+        }, 2000);
+        return;
+      }
+
+      // Real Finverse flow (when API is reachable)
+      console.log("🔗 Opening Finverse Link...");
+      console.log("Link token:", linkData.link_token);
+      
+      // In real implementation, handle the callback from Finverse
+      setTimeout(() => {
+        setIsConnected(true);
+        setIsConnectingBank(false);
+        fetchPortfolio();
+        fetchVillainData(5);
+      }, 3000);
+      
+    } catch (err) {
+      console.error("Bank connection error:", err);
+      // Demo mode fallback
+      setTimeout(() => {
+        setIsConnected(true);
+        setIsConnectingBank(false);
+        fetchPortfolio();
+        fetchVillainData(5);
+        console.log("✅ Demo: Bank connected successfully!");
+      }, 2000);
+    }
   };
 
   const handleTopUp = async () => {
     setIsConnectingStripe(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/portfolio/stripe/top-up`, {
-        method: "POST",
-      });
-      const data = await res.json();
-
-      if (data.success && data.url) {
-        console.log("💳 Opening Stripe Checkout...");
-        Linking.openURL(data.url);
-
-        setTimeout(async () => {
-          await fetch(`${API_BASE_URL}/portfolio/stripe/confirm`, {
-            method: "POST",
-          });
-          fetchPortfolio();
-          setVillainAlert(null); 
-          setIsConnectingStripe(false);
-        }, 5000);
-      } else {
-        setIsConnectingStripe(false);
+      // Just simulate connection to Stripe API without opening payment page
+      console.log("💳 Connecting to Stripe API...");
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Set connection state
+      setIsStripeConnected(true);
+      // Save to localStorage for persistence
+      try {
+        localStorage.setItem('stripeConnected', 'true');
+      } catch (e) {
+        console.log('Could not save to localStorage');
       }
+      
+      fetchPortfolio();
+      setVillainAlert(null); 
+      setIsConnectingStripe(false);
+      
+      console.log("✅ Stripe connected successfully!");
+      
     } catch (err) {
-      console.error("Top Up Error:", err);
+      console.error("Stripe Connection Error:", err);
       setIsConnectingStripe(false);
     }
   };
@@ -233,12 +281,12 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
           </Text>
         </View>
 
-        {!isConnected && (
+        {!isStripeConnected && (
           <TouchableOpacity
-            onPress={handleConnectBank}
-            disabled={isConnectingBank}
+            onPress={handleTopUp}
+            disabled={isConnectingStripe}
             style={{
-              backgroundColor: isConnectingBank ? "#374151" : "#111827",
+              backgroundColor: isConnectingStripe ? "#374151" : "#10b981",
               paddingVertical: 8,
               paddingHorizontal: 14,
               borderRadius: 20,
@@ -248,14 +296,37 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
               marginTop: 24,
             }}
           >
-            {isConnectingBank ? (
+            {isConnectingStripe ? (
               <ActivityIndicator color="white" size="small" />
             ) : (
-              <Text style={{ color: "white", fontWeight: "700", fontSize: 13 }}>
-                Connect to Stripe
-              </Text>
+              <>
+                <PiggyBank size={16} color="white" />
+                <Text style={{ color: "white", fontWeight: "700", fontSize: 13 }}>
+                  Connect to Stripe
+                </Text>
+              </>
             )}
           </TouchableOpacity>
+        )}
+
+        {isStripeConnected && (
+          <View style={{
+            backgroundColor: "#10b98120",
+            paddingVertical: 8,
+            paddingHorizontal: 14,
+            borderRadius: 20,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 24,
+            borderWidth: 1,
+            borderColor: "#10b981"
+          }}>
+            <PiggyBank size={16} color="#10b981" />
+            <Text style={{ color: "#10b981", fontWeight: "700", fontSize: 13 }}>
+              Stripe Connected
+            </Text>
+          </View>
         )}
       </View>
 

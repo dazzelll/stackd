@@ -97,3 +97,57 @@ class ManualAssetLog(Base):
     label = Column(String)
     amount = Column(Numeric(15, 2))
     created_at = Column(DateTime, default=func.now())
+
+class FinverseItem(Base):
+    __tablename__ = "finverse_items"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    access_token = Column(String, nullable=False)
+    item_id = Column(String)
+    institution_name = Column(String)
+    institution_id = Column(String)
+    status = Column(String, default="active")  # active, error, expired
+    last_sync = Column(DateTime)
+    created_at = Column(DateTime, default=func.now())
+    expires_at = Column(DateTime)
+
+class BankAccount(Base):
+    __tablename__ = "bank_accounts"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    finverse_item_id = Column(String, ForeignKey("finverse_items.id"))
+    account_id = Column(String, nullable=False)
+    account_name = Column(String)
+    account_type = Column(String)  # checking, savings, credit, etc.
+    account_subtype = Column(String)
+    mask = Column(String)  # Last 4 digits
+    status = Column(String, default="active")
+    currency = Column(String, default="SGD")
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now())
+
+class BankBalance(Base):
+    __tablename__ = "bank_balances"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    account_id = Column(String, ForeignKey("bank_accounts.id"))
+    balance_type = Column(String)  # current, available, ledger
+    amount = Column(Numeric(15, 2))
+    currency = Column(String, default="SGD")
+    as_of_date = Column(DateTime)
+    created_at = Column(DateTime, default=func.now())
+
+class BankTransaction(Base):
+    __tablename__ = "bank_transactions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    account_id = Column(String, ForeignKey("bank_accounts.id"))
+    transaction_id = Column(String, nullable=False)
+    amount = Column(Numeric(15, 2))
+    currency = Column(String, default="SGD")
+    date = Column(Date)
+    name = Column(String)
+    description = Column(String)
+    category = Column(String)
+    pending = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=func.now())

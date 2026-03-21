@@ -3,7 +3,7 @@ import { SafeAreaView, View, StatusBar, Text, TouchableOpacity, ActivityIndicato
 import { C } from "./wellness/constants";
 import { BottomNav } from "./wellness/SharedUI";
 import { Dashboard } from "./wellness/Dashboard";
-import { Code2, ChevronRight, ArrowRight } from "lucide-react-native";
+import { Code2, ChevronRight, ArrowRight, Building } from "lucide-react-native";
 import { 
   WealthBlob,
   EventSimulator,
@@ -19,27 +19,55 @@ import {
 
 import { API_BASE_URL } from "../lib/api"
 
-function AlpacaConnectScreen({ onDone, onUseDemo }: { onDone: () => void; onUseDemo: () => void }) {
-  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+function ConnectionScreen({ onDone, onUseDemo }: { onDone: () => void; onUseDemo: () => void }) {
+  const [connectionStatus, setConnectionStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [message, setMessage] = useState<string>("");
+  const [connectedServices, setConnectedServices] = useState<string[]>([]);
 
-  const connect = async () => {
+  const connectAllServices = async () => {
     try {
-      setStatus("loading");
+      setConnectionStatus("loading");
       setMessage("");
-      const res = await fetch(`${API_BASE_URL}/alpaca/status`);
-      const data = await res.json();
-      if (data.connected) {
-        setStatus("ok");
-        setMessage("Connected to Alpaca paper brokerage.");
-        setTimeout(onDone, 600);
-      } else {
-        setStatus("error");
-        setMessage(data.reason || "Unable to connect to Alpaca.");
+      setConnectedServices([]);
+
+      // Connect Alpaca
+      try {
+        const alpacaRes = await fetch(`${API_BASE_URL}/alpaca/status`);
+        const alpacaData = await alpacaRes.json();
+        if (alpacaData.connected) {
+          setConnectedServices(prev => [...prev, "Alpaca Sandbox"]);
+        }
+      } catch (e) {
+        console.log("Alpaca connection failed");
       }
+
+      // Connect Finverse
+      try {
+        const finverseRes = await fetch(`${API_BASE_URL}/finverse/link-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        
+        const finverseData = await finverseRes.json();
+        
+        if (!finverseData.success) {
+          console.log("🔗 Finverse not reachable - running demo mode");
+          setConnectedServices(prev => [...prev, "Bank Accounts (Demo)"]);
+        } else {
+          setConnectedServices(prev => [...prev, "Bank Accounts"]);
+        }
+      } catch (err) {
+        console.log("Finverse connection failed - using demo");
+        setConnectedServices(prev => [...prev, "Bank Accounts (Demo)"]);
+      }
+
+      setConnectionStatus("ok");
+      setMessage(`Connected: ${connectedServices.length > 0 ? connectedServices.join(", ") : "Demo mode"}`);
+      setTimeout(onDone, 1000);
+      
     } catch (e) {
-      setStatus("error");
-      setMessage("Network error. Please check the backend is running.");
+      setConnectionStatus("error");
+      setMessage("Connection failed. Please try again.");
     }
   };
 
@@ -59,48 +87,54 @@ function AlpacaConnectScreen({ onDone, onUseDemo }: { onDone: () => void; onUseD
         </Text>
       </View>
 
-      {/* Option 1: Alpaca */}
+      {/* Single Connect All Button */}
       <TouchableOpacity 
         style={{
-          flexDirection: "row", alignItems: "center", backgroundColor: "#fffbeb",
-          borderWidth: 1, borderColor: "#fde68a", borderRadius: 20, padding: 20,
-          marginBottom: 16, shadowColor: "#f59e0b", shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.1, shadowRadius: 8, elevation: 3
+          flexDirection: "row", alignItems: "center", backgroundColor: "#8b5cf6",
+          borderWidth: 1, borderColor: "#7c3aed", borderRadius: 20, padding: 20,
+          marginBottom: 16, shadowColor: "#8b5cf6", shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.2, shadowRadius: 8, elevation: 3
         }}
-        onPress={connect}
-        disabled={status === "loading" || status === "ok"}
+        onPress={connectAllServices}
+        disabled={connectionStatus === "loading" || connectionStatus === "ok"}
         activeOpacity={0.8}
       >
         <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
-          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: "#fef3c7", alignItems: "center", justifyContent: "center", marginRight: 16 }}>
-            <Code2 color="#f59e0b" size={24} />
+          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: "#a78bfa", alignItems: "center", justifyContent: "center", marginRight: 16 }}>
+            {connectionStatus === "loading" ? (
+              <ActivityIndicator color="white" size={24} />
+            ) : connectionStatus === "ok" ? (
+              <Text style={{ fontSize: 20 }}>✅</Text>
+            ) : (
+              <Text style={{ fontSize: 20 }}>🔗</Text>
+            )}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 17, fontWeight: "800", color: "#b45309", marginBottom: 2 }}>
-              Alpaca Sandbox
+            <Text style={{ fontSize: 17, fontWeight: "800", color: "white", marginBottom: 2 }}>
+              {connectionStatus === "loading" ? "Connecting..." : 
+               connectionStatus === "ok" ? "Connection Complete" : 
+               "Connect All Services"}
             </Text>
-            <Text style={{ fontSize: 13, color: "#d97706", fontWeight: "600" }}>
-              {status === "ok" ? "Connected successfully" : "Sync paper trading account"}
+            <Text style={{ fontSize: 13, color: "#e9d5ff", fontWeight: "600" }}>
+              {connectionStatus === "loading" ? "Linking Alpaca & banks..." : 
+               connectionStatus === "ok" ? `${connectedServices.length} services connected` :
+               "Alpaca Sandbox + Bank Accounts"}
             </Text>
           </View>
         </View>
-        {status === "loading" ? (
-          <ActivityIndicator color="#f59e0b" style={{ marginLeft: 12 }} />
-        ) : status === "ok" ? (
-          <Text style={{ fontSize: 20, marginLeft: 12 }}>✅</Text>
-        ) : (
-          <ChevronRight color="#f59e0b" size={24} style={{ marginLeft: 12 }} />
+        {connectionStatus === "loading" ? null : connectionStatus === "ok" ? null : (
+          <ChevronRight color="white" size={24} style={{ marginLeft: 12 }} />
         )}
       </TouchableOpacity>
 
-      {/* Option 2: Skip to Demo */}
+      {/* Skip to Demo */}
       <TouchableOpacity 
         style={{
           flexDirection: "row", alignItems: "center", backgroundColor: "#f9fafb",
           borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 20, padding: 20
         }}
         onPress={onUseDemo}
-        disabled={status === "loading"}
+        disabled={connectionStatus === "loading"}
         activeOpacity={0.8}
       >
         <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
@@ -158,7 +192,7 @@ if (view === "connect") {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
-      <AlpacaConnectScreen
+      <ConnectionScreen
         onDone={() => setView("dashboard")}
         onUseDemo={() => {
           setUseDemoAccount(true);

@@ -35,6 +35,9 @@ from engines import (
     HISTORY_SEEDED_STREAKS,     # ← ADD
 )
 
+# Import Finverse client
+from finverse import finverse_client
+
 # 1. Create DB Tables
 models.Base.metadata.create_all(bind=engine)
 
@@ -167,6 +170,21 @@ async def get_portfolio(db: Session = Depends(get_db)):
                 a["value"] += float(extra)
             except (TypeError, ValueError):
                 pass
+
+    # Add Finverse bank balances to Savings
+    try:
+        bank_balance_response = await get_finverse_total_balance(db)
+        if bank_balance_response.get("success"):
+            try:
+                bank_total = float(bank_balance_response.get("total_balance", 0))
+            except (ValueError, TypeError):
+                bank_total = 0.0
+            for a in assets:
+                if a["name"] == "Savings":
+                    a["value"] += bank_total
+                    break
+    except Exception as e:
+        print("Error adding Finverse balances to portfolio:", repr(e))
 
     villain_event_active = HACKATHON_SABOTAGE_MODE
 
@@ -1145,6 +1163,31 @@ async def get_sandbox_portfolio(db: Session = Depends(get_db)):
             else:
                 a["holdings"] = mh
 
+    # 3) Add Finverse bank balances to Savings
+    try:
+        bank_balance_response = await get_finverse_total_balance(db)
+        if bank_balance_response.get("success"):
+            bank_total = float(bank_balance_response.get("total_balance", 0))
+            for a in assets:
+                if a["name"] == "Savings":
+                    a["value"] += bank_total
+                    # Add bank holdings detail
+                    accounts_response = await get_finverse_accounts(db)
+                    if accounts_response.get("success"):
+                        bank_holdings = []
+                        for account in accounts_response.get("accounts", []):
+                            bank_holdings.append({
+                                "ticker": "BANK",
+                                "name": f"{account['institution']} - {account['account_name']} ({account['mask']})",
+                                "value": account["balance"],
+                                "change": 0
+                            })
+                        existing = a.get("holdings", [])
+                        a["holdings"] = existing + bank_holdings
+                    break
+    except Exception as e:
+        print("Error adding Finverse balances to sandbox portfolio:", repr(e))
+
     # If sabotage mode is active, apply the same overspend damage here so the
     # dashboard blobs and detail views show the villain‑arc version too.
     assets = _apply_sabotage_to_assets(assets)
@@ -1425,3 +1468,230 @@ async def get_claimed_challenges(db: Session = Depends(get_db)):
     ).all()
     # Return a simple list of the titles that have been claimed
     return [r.title for r in rows]
+
+# --- FINVERSE BANK DATA INTEGRATION ---
+
+@app.get("/api/finverse/status")
+async def finverse_status():
+    """Check if Finverse API is configured and reachable"""
+    if not finverse_client.is_configured():
+        return {
+            "connected": False,
+            "reason": "Finverse API credentials not configured (check FINVERSE_* in .env)",
+        }
+    
+    try:
+        token = await finverse_client.get_customer_token()
+        return {"connected": True, "reason": "ok"}
+    except Exception as e:
+        return {
+            "connected": False,
+            "reason": f"Finverse authentication failed: {repr(e)}",
+        }
+
+@app.post("/api/finverse/link-token")
+async def create_finverse_link_token():
+    """Create a link token for connecting bank accounts via Finverse Link"""
+    try:
+        link_data = await finverse_client.create_link_token()
+        return {"success": True, "link_token": link_data["link_token"]}
+    except Exception as e:
+        print("Finverse link token error:", repr(e))
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/finverse/exchange-token")
+async def exchange_finverse_token(public_token: str, db: Session = Depends(get_db)):
+    """Exchange public token from Finverse Link for access token and store it"""
+    try:
+        token_data = await finverse_client.exchange_public_token(public_token)
+        access_token = token_data["access_token"]
+        item_id = token_data["item_id"]
+        institution_name = token_data.get("institution_name", "Unknown Bank")
+        
+        # Store the Finverse item
+        finverse_item = models.FinverseItem(
+            user_id=None,  # For demo, no user authentication
+            access_token=access_token,
+            item_id=item_id,
+            institution_name=institution_name,
+            status="active",
+            last_sync=datetime.now()
+        )
+        db.add(finverse_item)
+        db.commit()
+        db.refresh(finverse_item)
+        
+        # Immediately fetch and store accounts
+        await sync_finverse_accounts(finverse_item.id, access_token, db)
+        
+        return {
+            "success": True,
+            "item_id": finverse_item.id,
+            "institution": institution_name
+        }
+    except Exception as e:
+        print("Finverse token exchange error:", repr(e))
+        return {"success": False, "error": str(e)}
+
+async def sync_finverse_accounts(finverse_item_id: str, access_token: str, db: Session):
+    """Sync accounts, balances, and transactions from Finverse"""
+    try:
+        # Get accounts
+        accounts = await finverse_client.get_accounts(access_token)
+        
+        for account in accounts:
+            # Store account
+            bank_account = models.BankAccount(
+                user_id=None,
+                finverse_item_id=finverse_item_id,
+                account_id=account["id"],
+                account_name=account.get("name", ""),
+                account_type=account.get("type", ""),
+                account_subtype=account.get("subtype", ""),
+                mask=account.get("mask", ""),
+                status=account.get("status", "active"),
+                currency=account.get("currency", "SGD")
+            )
+            db.add(bank_account)
+            db.flush()
+            
+            # Store balances
+            balances = await finverse_client.get_balances(access_token)
+            for balance in balances:
+                if balance.get("account_id") == account["id"]:
+                    bank_balance = models.BankBalance(
+                        user_id=None,
+                        account_id=bank_account.id,
+                        balance_type=balance.get("type", "current"),
+                        amount=float(balance.get("amount", 0)),
+                        currency=balance.get("currency", "SGD"),
+                        as_of_date=datetime.now()
+                    )
+                    db.add(bank_balance)
+        
+        # Get recent transactions (last 30 days)
+        transactions = await finverse_client.get_transactions(access_token, days=30)
+        
+        for transaction in transactions:
+            # Find corresponding account
+            account = db.query(models.BankAccount).filter(
+                models.BankAccount.account_id == transaction.get("account_id")
+            ).first()
+            
+            if account:
+                bank_transaction = models.BankTransaction(
+                    user_id=None,
+                    account_id=account.id,
+                    transaction_id=transaction.get("id"),
+                    amount=float(transaction.get("amount", 0)),
+                    currency=transaction.get("currency", "SGD"),
+                    date=datetime.strptime(transaction.get("date", ""), "%Y-%m-%d").date() if transaction.get("date") else datetime.now().date(),
+                    name=transaction.get("name", ""),
+                    description=transaction.get("description", ""),
+                    category=transaction.get("category", ""),
+                    pending=transaction.get("pending", False)
+                )
+                db.add(bank_transaction)
+        
+        db.commit()
+        print(f"Synced {len(accounts)} accounts and {len(transactions)} transactions")
+        
+    except Exception as e:
+        print("Finverse sync error:", repr(e))
+        db.rollback()
+
+@app.get("/api/finverse/accounts")
+async def get_finverse_accounts(db: Session = Depends(get_db)):
+    """Get all connected bank accounts and their current balances"""
+    try:
+        # Check if we have any real accounts
+        accounts = db.query(models.BankAccount).filter(
+            models.BankAccount.user_id.is_(None)
+        ).all()
+        
+        # If no real accounts and Finverse is not reachable, return demo data
+        if not accounts:
+            # Demo mode - return mock bank accounts for testing
+            demo_accounts = [
+                {
+                    "id": "demo-1",
+                    "account_name": "DBS Savings Plus",
+                    "account_type": "savings",
+                    "account_subtype": "checking",
+                    "mask": "1234",
+                    "institution": "DBS Bank Ltd",
+                    "status": "active",
+                    "currency": "SGD",
+                    "balance": 25000.00,
+                    "last_updated": datetime.now().isoformat()
+                },
+                {
+                    "id": "demo-2", 
+                    "account_name": "OCBC 360 Account",
+                    "account_type": "savings",
+                    "account_subtype": "checking",
+                    "mask": "5678",
+                    "institution": "OCBC Bank",
+                    "status": "active",
+                    "currency": "SGD",
+                    "balance": 15000.00,
+                    "last_updated": datetime.now().isoformat()
+                }
+            ]
+            return {"success": True, "accounts": demo_accounts}
+        
+        # Real accounts exist - return them
+        result = []
+        for account in accounts:
+            # Get latest balance
+            latest_balance = db.query(models.BankBalance).filter(
+                models.BankBalance.account_id == account.id
+            ).order_by(models.BankBalance.created_at.desc()).first()
+            
+            result.append({
+                "id": account.id,
+                "account_name": account.account_name,
+                "account_type": account.account_type,
+                "account_subtype": account.account_subtype,
+                "mask": account.mask,
+                "institution": account.finverse_item.institution_name if account.finverse_item else "Unknown",
+                "status": account.status,
+                "currency": account.currency,
+                "balance": float(latest_balance.amount) if latest_balance else 0.0,
+                "last_updated": latest_balance.created_at.isoformat() if latest_balance else None
+            })
+        
+        return {"success": True, "accounts": result}
+    except Exception as e:
+        print("Error getting Finverse accounts:", repr(e))
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/finverse/total-balance")
+async def get_finverse_total_balance(db: Session = Depends(get_db)):
+    """Get total balance across all connected bank accounts"""
+    try:
+        # Check if we have any real accounts
+        accounts = db.query(models.BankAccount).filter(
+            models.BankAccount.user_id.is_(None),
+            models.BankAccount.status == "active"
+        ).all()
+        
+        # If no real accounts, return demo data
+        if not accounts:
+            # Demo mode - return mock total balance
+            return {"success": True, "total_balance": 40000.0, "currency": "SGD"}
+        
+        # Sum up all latest balances for real accounts
+        total = 0.0
+        for account in accounts:
+            latest_balance = db.query(models.BankBalance).filter(
+                models.BankBalance.account_id == account.id
+            ).order_by(models.BankBalance.created_at.desc()).first()
+            
+            if latest_balance and latest_balance.balance_type == "current":
+                total += float(latest_balance.amount)
+        
+        return {"success": True, "total_balance": total, "currency": "SGD"}
+    except Exception as e:
+        print("Error calculating total balance:", repr(e))
+        return {"success": False, "error": str(e)}

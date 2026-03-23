@@ -5,6 +5,7 @@ from datetime import datetime
 import httpx
 from fastapi import FastAPI, Depends, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
 from contextlib import asynccontextmanager
@@ -131,25 +132,95 @@ async def create_stripe_checkout():
                         'name': 'Wealth Wellness Top-Up',
                         'description': 'Add funds to your investment portfolio',
                     },
-                    'unit_amount': 10000,  # $100 SGD in cents
+                    'unit_amount': 50000,  # $500 SGD in cents (matching the button text)
                 },
                 'quantity': 1,
             }],
             mode='payment',
-            success_url='https://checkout.stripe.com/test/success',
-            cancel_url='https://stripe.com',
+            success_url='http://localhost:8000/api/portfolio/stripe/confirm',
+            cancel_url='http://localhost:8000/cancel',
         )
         return {"success": True, "url": session.url}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
-@app.post("/api/portfolio/stripe/confirm")
+@app.post("/api/portfolio/stripe/confirm", response_class=HTMLResponse)
 async def confirm_top_up():
     """Hackathon backdoor: Adds $500 to the global state after a successful checkout"""
     global HACKATHON_TOP_UP_TOTAL
     HACKATHON_TOP_UP_TOTAL += 500
-    return {"success": True, "new_total": HACKATHON_TOP_UP_TOTAL}
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Payment Successful</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .success { color: #10b981; font-size: 24px; margin-bottom: 20px; }
+            .amount { font-size: 36px; font-weight: bold; color: #059669; }
+            .message { margin-top: 20px; color: #666; }
+            .close-btn { 
+                background: #10b981; 
+                color: white; 
+                padding: 12px 24px; 
+                border: none; 
+                border-radius: 8px; 
+                cursor: pointer;
+                margin-top: 30px;
+                font-size: 16px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="success">✅ Payment Successful!</div>
+        <div class="amount">$500 SGD</div>
+        <div class="message">Your funds have been added to your portfolio.</div>
+        <button class="close-btn" onclick="window.close()">Close Window</button>
+        <script>
+            // Auto-close after 3 seconds
+            setTimeout(() => window.close(), 3000);
+        </script>
+    </body>
+    </html>
+    """
+
+
+@app.get("/cancel", response_class=HTMLResponse)
+async def payment_cancelled():
+    """Payment cancelled page"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Payment Cancelled</title>
+        <style>
+            body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
+            .cancelled { color: #ef4444; font-size: 24px; margin-bottom: 20px; }
+            .message { margin-top: 20px; color: #666; }
+            .close-btn { 
+                background: #ef4444; 
+                color: white; 
+                padding: 12px 24px; 
+                border: none; 
+                border-radius: 8px; 
+                cursor: pointer;
+                margin-top: 30px;
+                font-size: 16px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="cancelled">❌ Payment Cancelled</div>
+        <div class="message">Your payment was cancelled. No charges were made.</div>
+        <button class="close-btn" onclick="window.close()">Close Window</button>
+        <script>
+            // Auto-close after 2 seconds
+            setTimeout(() => window.close(), 2000);
+        </script>
+    </body>
+    </html>
+    """
 
 
 @app.get("/api/portfolio")

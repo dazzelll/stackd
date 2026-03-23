@@ -15,6 +15,7 @@ import { BlobEcosystem } from "./BlobEcosystem";
 import { AssetDetailSheet } from "./AssetDetailSheet";
 import { Gift, Zap, Bitcoin, PiggyBank, Home, ChartLine, ScrollText, TrendingUp, BanknoteArrowDown, Building } from "lucide-react-native";
 import { API_BASE_URL } from "../../lib/api";
+import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
 
 // Global state for Stripe connection persistence
 let globalStripeConnected = false;
@@ -203,24 +204,40 @@ export function Dashboard({ onNavigate, mode, useDemoAccount }: any) {
   const handleTopUp = async () => {
     setIsConnectingStripe(true);
     try {
-      // Simulate connection to Stripe API without opening payment page
-      console.log("💳 Connecting to Stripe API...");
+      console.log("💳 Creating Stripe checkout session...");
       
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Call backend API to create Stripe checkout session
+      const response = await fetch(`${API_BASE_URL}/portfolio/stripe/top-up`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
       
-      // Update global state for persistence
-      globalStripeConnected = true;
-      setIsStripeConnected(true);
+      const result = await response.json();
       
-      fetchPortfolio();
-      setVillainAlert(null); 
-      setIsConnectingStripe(false);
-      
-      console.log("✅ Stripe connected successfully!");
+      if (result.success && result.url) {
+        // Open Stripe checkout page in browser
+        await openBrowserAsync(result.url, {
+          presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+        });
+        
+        // After browser closes, refresh portfolio to show updated balance
+        // and mark as connected
+        setTimeout(() => {
+          globalStripeConnected = true;
+          setIsStripeConnected(true);
+          fetchPortfolio();
+          setVillainAlert(null);
+          console.log("✅ Payment processed and portfolio updated!");
+        }, 1000); // Small delay to allow backend processing
+        
+      } else {
+        throw new Error(result.error || 'Failed to create Stripe session');
+      }
       
     } catch (err) {
       console.error("Stripe Connection Error:", err);
+      // You might want to show an error message to the user here
+    } finally {
       setIsConnectingStripe(false);
     }
   };

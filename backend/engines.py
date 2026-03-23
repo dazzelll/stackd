@@ -146,10 +146,37 @@ async def extract_simulation_parameters(scenario_text: str):
         
     except Exception as e:
         print("Gemini Extraction Error:", e)
+        # Attempt a cheap regex-based extraction so the demo still feels smart
+        import re
+        text = scenario_text.lower()
+
+        # Years: "5 years", "over 3 years", etc.
+        years_match = re.search(r'(\d+)\s*year', text)
+        years = int(years_match.group(1)) if years_match else 5
+
+        # Monthly contribution / savings: "$500/mo", "save 1000 a month"
+        contrib_match = re.search(r'\$?([\d,]+)\s*(?:/mo|per month|a month|monthly)', text)
+        monthly_contribution = int(contrib_match.group(1).replace(",", "")) if contrib_match else 500
+
+        # One-time expense: "buy a $30,000 car", "spend $5000 on"
+        expense_match = re.search(r'(?:buy|spend|purchase|cost)[^\$]*\$?([\d,]+)', text)
+        one_time_expense = int(expense_match.group(1).replace(",", "")) if expense_match else 0
+
+        # Income pause: "lose my job for 6 months", "3 month gap"
+        pause_match = re.search(r'(\d+)\s*month', text)
+        income_pause_months = int(pause_match.group(1)) if pause_match else 0
+
+        # Salary / burn: "earning $8000", "salary of $5,000"
+        salary_match = re.search(r'(?:earn|salary|mak|pay)[^\$]*\$?([\d,]+)', text)
+        living_expense_burn = int(int(salary_match.group(1).replace(",", "")) * 0.5) if salary_match else 3500
+
         return {
-            "years_to_simulate": 5, "monthly_contribution": 500,
-            "one_time_expense": 0, "expense_year": 1, 
-            "income_pause_months": 0, "living_expense_burn": 3500
+            "years_to_simulate": years,
+            "monthly_contribution": monthly_contribution,
+            "one_time_expense": one_time_expense,
+            "expense_year": 1,
+            "income_pause_months": income_pause_months,
+            "living_expense_burn": living_expense_burn,
         }
         
 
@@ -182,7 +209,23 @@ async def generate_prophecy_text(data):
         return response.text.strip()
     except Exception as e:
         print("Gemini API Error:", e)
-        return "Testing your options is a massive W. Keep tweaking the variables until you secure the bag."
+        projected = data.get("projectedWealth", 0)
+        starting = data.get("startingWealth", 0)
+        delta = projected - starting if (projected and starting) else 0
+        direction = "up" if delta >= 0 else "down"
+        amount = f"${abs(delta):,.0f}" if delta else "a solid amount"
+        pause = params.get("income_pause_months", 0)
+        if pause and int(pause) > 0:
+            return (
+                f"Taking a {pause}-month gap is a bold move, but your numbers still look promising — "
+                f"you're projected {direction} {amount} over the period. "
+                f"Lock in an emergency fund before the gap starts so you're not draining investments to live. Main character energy secured 💅"
+            )
+        return (
+            f"The math is giving {'growth' if delta >= 0 else 'a reality check'} — "
+            f"you're projected {direction} {amount} after running this sim. "
+            f"Keep tweaking the variables until you fully secure the bag. You're built different 🚀"
+        )
     
 async def generate_gemini_prophecy(risk_level: int, goals_summary: str):
     """Oracle Manifestation Board Prophecy via Official GenAI SDK"""
@@ -206,7 +249,26 @@ Give a short mystical prophecy (3-4 sentences) about their financial future base
         print("--- GEMINI CRASH REPORT ---")
         traceback.print_exc()
         print("---------------------------")
-        return f"The oracle is temporarily disconnected. Error: {str(e)}"
+        # Risk-tiered fallback prophecies so the demo still feels personalised
+        if risk_level <= 3:
+            return (
+                f"The stars align for the steady and the patient — your conservative path (risk {risk_level}/10) "
+                f"is written in the cosmos as a fortress of compounding returns. "
+                f"The algorithm has spoken: low volatility is not low ambition. "
+                f"The oracle commands: automate a monthly transfer into a high-yield savings account or short-duration bond fund and let time do the heavy lifting."
+            )
+        elif risk_level <= 6:
+            return (
+                f"The celestial ledger reads balance — a risk appetite of {risk_level}/10 places you among the shrewd navigators of the market tides. "
+                f"The algorithm has spoken: your blend of growth and stability is the golden ratio of wealth. "
+                f"The oracle commands: rebalance your equity-to-bond ratio quarterly and reinvest every dividend automatically to harness the full power of compounding."
+            )
+        else:
+            return (
+                f"The cosmos tremble at your {risk_level}/10 boldness — the high-risk path is carved for those who dare to reshape their financial destiny. "
+                f"The algorithm has spoken: volatility is merely opportunity wearing a disguise. "
+                f"The oracle commands: dollar-cost average into your highest-conviction growth position monthly rather than timing the market, and keep a 3-month cash buffer so you never sell at a dip."
+            )
     
 async def generate_villain_roast(assets_data, risk_level: int):
     """
@@ -244,8 +306,40 @@ Sound like an intelligent Gen Z financial advisor. Max 4 sentences. No vague adv
         
     except Exception as e:
         print("Gemini API Error:", e)
-        fallback_message = "your savings are depleted and crypto is wilding bestie. we need to fix this."
-        fallback_steps = "Move at least $20,000 from crypto into your savings account now to restore liquidity. Then set a monthly auto-transfer of $500 into savings until you hit 15% of your total portfolio."
+        # Build a semi-smart fallback using the raw assets_data
+        try:
+            assets = assets_data if isinstance(assets_data, list) else []
+            total = sum(float(a.get("value", 0)) for a in assets) or 1
+            crypto_pct = sum(float(a.get("value", 0)) for a in assets if "crypto" in a.get("name", "").lower()) / total * 100
+            savings_pct = sum(float(a.get("value", 0)) for a in assets if "saving" in a.get("name", "").lower()) / total * 100
+
+            if crypto_pct > 40:
+                fallback_message = f"Bestie, {crypto_pct:.0f}% in crypto is giving chaos energy — diversify before the next dip hits different."
+                fallback_steps = (
+                    f"Move at least ${total * 0.15:,.0f} from crypto into savings or bonds to bring crypto below 30%. "
+                    f"Set a hard rule: no single asset over 35% of your portfolio. "
+                    f"Enable auto-rebalance if your broker supports it so emotions don't drive your allocation."
+                )
+            elif savings_pct < 10:
+                fallback_message = f"Your liquid savings are dangerously low at {savings_pct:.0f}% — one emergency could force you to sell at a loss."
+                fallback_steps = (
+                    f"Redirect ${min(total * 0.05, 2000):,.0f}/month into a high-yield savings account until you hit 15% liquid. "
+                    f"Don't touch investments to cover short-term costs — that's how wealth gets destroyed. "
+                    f"Consider a risk level of {max(1, risk_level - 2)}/10 until your cash buffer is secured."
+                )
+            else:
+                fallback_message = "Your portfolio has potential but the balance could use some fine-tuning, bestie."
+                fallback_steps = (
+                    f"Review your top holding — if it's over 40% of your portfolio, trim it. "
+                    f"At risk level {risk_level}/10, ensure you have at least 3 months' expenses in liquid savings. "
+                    f"Set a quarterly reminder to rebalance so your allocation doesn't drift."
+                )
+        except Exception:
+            fallback_message = "your savings are depleted and crypto is wilding bestie. we need to fix this."
+            fallback_steps = (
+                "Move at least $20,000 from crypto into your savings account now to restore liquidity. "
+                "Then set a monthly auto-transfer of $500 into savings until you hit 15% of your total portfolio."
+            )
         return fallback_message, fallback_steps
 
 
